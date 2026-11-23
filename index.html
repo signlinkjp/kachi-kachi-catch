@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="format-detection" content="telephone=no" />
+<title>Kachi Kachi Catch</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ============================ OPENING ============================ -->
+  <section class="screen" id="screen-opening">
+    <div class="open-bg"></div>
+    <div class="open-sun"></div>
+    <div class="open-inner">
+      <img class="open-rabbit" src="assets/rabbit_token.png" alt="" />
+      <img class="open-tanuki" src="assets/tanuki_token.png" alt="" />
+      <h1 class="open-title" id="open-title">Kachi Kachi Catch</h1>
+      <p class="open-tag" id="open-tag">5×5</p>
+    </div>
+    <p class="open-skip" id="open-skip">タップしてスタート</p>
+  </section>
+
+  <!-- ============================ TITLE ============================ -->
+  <section class="screen" id="screen-title">
+    <div class="sun"></div>
+    <div class="hills"></div>
+    <div class="grain"></div>
+
+    <div class="title-head">
+      <div class="seal">詰</div>
+      <h1 class="logo">
+        <span class="l1" id="logo-l1">カチカチ</span>
+        <span class="l2" id="logo-l2">キャッチ</span>
+      </h1>
+      <p class="logo-en">KACHI&nbsp;KACHI&nbsp;CATCH</p>
+      <p class="title-tag" id="title-tagline">5×5 詰みパズル</p>
+    </div>
+
+    <div class="hero">
+      <div class="hero-frame">
+        <img src="assets/title_hero.png" alt="" />
+      </div>
+      <div class="hero-tag" id="hero-tag">5×5</div>
+    </div>
+
+    <div class="paw-trail" aria-hidden="true">
+      <span style="left:40px;bottom:2px;transform:rotate(8deg)"></span>
+      <span style="left:92px;bottom:12px;transform:rotate(-6deg) scale(.9)"></span>
+      <span style="left:146px;bottom:2px;transform:rotate(10deg) scale(1.05)"></span>
+      <span style="right:146px;bottom:2px;transform:rotate(-8deg) scale(1.05)"></span>
+      <span style="right:92px;bottom:14px;transform:rotate(6deg) scale(.9)"></span>
+      <span style="right:40px;bottom:2px;transform:rotate(-10deg)"></span>
+    </div>
+
+    <div class="title-foot">
+      <button class="btn primary" id="btn-play">
+        <span class="btn-main" id="btn-play-main">あそぶ</span>
+        <span class="btn-sub" id="btn-play-sub">つづきから</span>
+      </button>
+      <div class="menu-grid">
+        <button class="btn menu-btn" id="btn-stages"><span class="ico">▦</span><span data-i18n="menu.stages">ステージ</span></button>
+        <button class="btn menu-btn" id="btn-daily"><span class="ico">☀</span><span data-i18n="menu.daily">今日の1問</span><em class="dot" id="daily-dot"></em></button>
+        <button class="btn menu-btn" id="btn-ta"><span class="ico">⏱</span><span data-i18n="menu.ta">タイムアタック</span><b class="pro-chip">PRO</b></button>
+        <button class="btn menu-btn" id="btn-howto"><span class="ico">?</span><span data-i18n="menu.howto">あそびかた</span></button>
+      </div>
+      <div class="title-util">
+        <button class="chip" id="btn-settings"><span>⚙</span><span data-i18n="menu.settings">設定</span></button>
+        <button class="chip" id="btn-lang"><span>🌐</span><span id="lang-chip">日本語</span></button>
+      </div>
+      <p class="credit" id="credit-line">STAGE 1–50 ・ 今日の1問</p>
+    </div>
+  </section>
+
+  <!-- ============================ STAGE SELECT ============================ -->
+  <section class="screen" id="screen-select">
+    <header class="hud">
+      <button class="icon-btn" data-back>←</button>
+      <div class="stage-meta">
+        <span class="kicker" data-i18n="menu.stages">ステージ</span>
+        <strong id="select-progress">0 / 50</strong>
+      </div>
+      <div class="spacer"></div>
+      <button class="chip pro-chip-btn" id="btn-pro-from-select">PRO</button>
+    </header>
+    <div class="select-scroll" id="select-list"></div>
+  </section>
+
+  <!-- ============================ DAILY ============================ -->
+  <section class="screen" id="screen-daily">
+    <header class="hud">
+      <button class="icon-btn" data-back>←</button>
+      <div class="stage-meta">
+        <span class="kicker" data-i18n="daily.today">今日</span>
+        <strong id="daily-date">2026-11-24</strong>
+      </div>
+      <div class="spacer"></div>
+    </header>
+    <div class="select-scroll">
+      <div class="daily-card" id="daily-card">
+        <div class="daily-card-top">
+          <span class="daily-badge" id="daily-badge">今日の1問</span>
+          <span class="daily-par" id="daily-par">3手詰</span>
+        </div>
+        <h2 id="daily-title">今日の1問</h2>
+        <p id="daily-state">まだ挑戦していません</p>
+        <button class="btn primary" id="btn-daily-play" data-i18n="daily.play">あそぶ</button>
+      </div>
+      <div class="diff-head"><h2 data-i18n="daily.past">過去のデイリー</h2><span class="bar"></span><span class="par" id="past-pro">PRO</span></div>
+      <div class="past-list" id="past-list"></div>
+    </div>
+  </section>
+
+  <!-- ============================ GAME (stage / daily / time attack) ============================ -->
+  <section class="screen" id="screen-game">
+    <header class="hud">
+      <button class="icon-btn" id="btn-back">←</button>
+      <div class="stage-meta">
+        <span class="kicker" id="hud-difficulty">初級</span>
+        <strong id="hud-name">STAGE 1</strong>
+      </div>
+      <div class="moves" id="hud-moves-wrap">
+        <span data-i18n="stage.remaining">のこり</span>
+        <b id="hud-moves">1</b>
+        <i id="hud-moves-unit">手</i>
+      </div>
+      <div class="ta-hud" id="ta-hud">
+        <div class="ta-time" id="ta-time">60</div>
+        <div class="ta-score"><span data-i18n="ta.score">スコア</span><b id="ta-score">0</b></div>
+      </div>
+    </header>
+
+    <div class="par-strip">
+      <span class="par" id="hud-par">1手詰</span>
+      <span class="strip-text" id="hud-strip">ポコ丸の逃げ場をふさごう</span>
+    </div>
+
+    <div class="game-body">
+    <div class="board-wrap" id="board-wrap">
+      <div class="board" id="board"></div>
+      <div class="token-layer" id="token-layer">
+        <div class="tanuki" id="tanuki">
+          <img src="assets/tanuki_token.png" alt="" />
+          <div class="net" id="net"><span></span><span></span><span></span><span></span></div>
+          <div class="sweat">💦</div>
+        </div>
+        <div class="usagiro" id="usagiro">
+          <img src="assets/rabbit_token.png" alt="" />
+          <div class="mallet"></div>
+        </div>
+      </div>
+      <div class="fx-layer" id="fx"></div>
+    </div>
+
+    <div class="meter" id="meter">
+      <span class="meter-label" id="meter-label">ポコ丸の逃げ場</span>
+      <div class="pips" id="pips"></div>
+      <span class="meter-num" id="meter-num">0</span>
+    </div>
+
+    <div class="note" id="note">
+      <img class="note-av" id="note-av" src="assets/tanuki_face.png" alt="" />
+      <p id="note-text">つかまえてみなよ〜！</p>
+    </div>
+
+    </div>
+
+    <div class="prog-strip" id="prog-strip">
+      <span id="prog-label">STAGE 1 / 50</span>
+      <div class="pbar"><i id="prog-fill"></i></div>
+    </div>
+
+    <div class="game-foot" id="game-foot">
+      <button class="btn small" id="btn-hint"><span>💡</span><span id="hint-label">ヒント</span></button>
+      <button class="btn small" id="btn-retry"><span>↺</span><span data-i18n="game.retry">やりなおし</span></button>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <div class="overlay" id="overlay">
+      <div class="card" id="card">
+        <div class="card-img" id="card-img"></div>
+        <h2 id="card-title">つかまえた！</h2>
+        <p id="card-text"></p>
+        <div class="card-actions" id="card-actions"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ HOW TO (modal) ============================ -->
+  <div class="sheet" id="howto-sheet">
+    <div class="sheet-card howto-card">
+      <button class="sheet-close" id="howto-close">×</button>
+      <div class="howto-head">
+        <h2 id="howto-title">あそびかた</h2>
+        <p>KACHI KACHI CATCH</p>
+      </div>
+      <div class="rules-scroll howto-scroll">
+        <div class="rule-card">
+          <h3 id="r1t">① 十字に網をしかける</h3>
+          <p id="r1b"></p>
+          <div class="mini" id="mini-1"></div>
+        </div>
+        <div class="rule-card">
+          <h3 id="r2t">② ポコ丸はすばしっこい</h3>
+          <p id="r2b"></p>
+          <div class="mini" id="mini-2"></div>
+        </div>
+        <div class="rule-card">
+          <h3 id="r3t">③ ポコ丸の足元はタップできない</h3>
+          <p id="r3b"></p>
+        </div>
+        <div class="rule-card">
+          <h3 id="r4t">④ 決められた手数で</h3>
+          <p id="r4b"></p>
+        </div>
+      </div>
+      <button class="btn primary wide" id="howto-ok" data-i18n="howto.start">わかった</button>
+    </div>
+  </div>
+
+  <!-- ============================ SETTINGS ============================ -->
+  <section class="screen" id="screen-settings">
+    <header class="hud">
+      <button class="icon-btn" data-back>←</button>
+      <div class="stage-meta"><span class="kicker">KACHI KACHI CATCH</span><strong id="settings-title">設定</strong></div>
+      <div class="spacer"></div>
+    </header>
+    <div class="settings-scroll">
+      <div class="set-row">
+        <span data-i18n="settings.bgm">BGM</span>
+        <button class="toggle" id="tg-bgm" role="switch"><i></i></button>
+      </div>
+      <div class="set-row">
+        <span data-i18n="settings.se">効果音</span>
+        <button class="toggle" id="tg-se" role="switch"><i></i></button>
+      </div>
+      <div class="set-row">
+        <span data-i18n="settings.haptics">バイブ</span>
+        <button class="toggle" id="tg-haptics" role="switch"><i></i></button>
+      </div>
+      <div class="set-row link" id="row-lang">
+        <span data-i18n="settings.language">言語</span>
+        <span class="set-value"><span id="set-lang">日本語</span><b>›</b></span>
+      </div>
+      <div class="set-row link" id="row-pro">
+        <span id="pro-row-label">PRO</span>
+        <span class="set-value"><span id="pro-row-state">—</span><b>›</b></span>
+      </div>
+      <div class="set-row link" id="row-restore">
+        <span data-i18n="settings.restore">購入を復元</span>
+        <span class="set-value"><b>›</b></span>
+      </div>
+      <div class="set-row link" id="row-privacy">
+        <span data-i18n="settings.privacy">プライバシーポリシー</span>
+        <span class="set-value"><b>›</b></span>
+      </div>
+      <p class="version" id="version-line">Kachi Kachi Catch 1.0.0 (1)</p>
+    </div>
+  </section>
+
+  <!-- ============================ PRIVACY ============================ -->
+  <section class="screen" id="screen-privacy">
+    <header class="hud">
+      <button class="icon-btn" data-back>←</button>
+      <div class="stage-meta"><span class="kicker" id="privacy-kicker">Privacy</span><strong id="privacy-title">プライバシーポリシー</strong></div>
+      <div class="spacer"></div>
+    </header>
+    <div class="privacy-scroll">
+      <p id="privacy-body"></p>
+      <a class="btn ghost wide" id="privacy-link" href="https://github.com/signlinkjp/kachi-kachi-catch/blob/main/docs/privacy.md" target="_blank" rel="noopener" data-i18n="privacy.open">Webで全文を読む</a>
+    </div>
+  </section>
+
+  <!-- ============================ PRO SHEET ============================ -->
+  <div class="sheet" id="pro-sheet">
+    <div class="sheet-card">
+      <button class="sheet-close" id="pro-close">×</button>
+      <div class="sheet-head">
+        <img src="assets/rabbit_token.png" alt="" />
+        <h2 id="pro-title">Kachi Kachi Catch PRO</h2>
+        <p id="pro-lead">買い切りの一度だけ</p>
+      </div>
+      <ul class="pro-items" id="pro-items"></ul>
+      <p class="pro-price" id="pro-price">価格は App Store に表示されます</p>
+      <button class="btn primary wide" id="pro-buy" data-i18n="pro.buy">購入する</button>
+      <button class="btn ghost wide" id="pro-restore" data-i18n="pro.restore">復元する</button>
+      <p class="pro-note" id="pro-note"></p>
+    </div>
+  </div>
+
+  <!-- ============================ LANGUAGE SHEET ============================ -->
+  <div class="sheet" id="lang-sheet">
+    <div class="sheet-card lang-card">
+      <button class="sheet-close" id="lang-close">×</button>
+      <h2 data-i18n="common.language">言語</h2>
+      <div class="lang-list" id="lang-list"></div>
+    </div>
+  </div>
+
+</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

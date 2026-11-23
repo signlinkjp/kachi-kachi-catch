@@ -1,0 +1,440 @@
+d=1 tpl=上下の岩 traps=1 first=1 (0s)
+d=5 tpl=上段の岩 traps=3 first=1 (0s)
+d=5 tpl=左右の岩場 traps=2 first=2 (0s)
+d=5 tpl=左右の岩場 traps=3 first=2 (0s)
+d=1 tpl=両脇の岩 traps=4 first=1 (0s)
+d=1 tpl=三隅の岩 traps=4 first=1 (0s)
+d=3 tpl=中央2x2 traps=0 first=1 (2s)
+d=1 tpl=上下の岩 traps=2 first=1 (2s)
+d=1 tpl=左右の岩 traps=3 first=1 (2s)
+d=3 tpl=下段の岩 traps=4 first=1 (2s)
+d=7 tpl=両脇の岩 traps=3 first=1 (3s)
+d=1 tpl=四隅の岩 traps=4 first=1 (3s)
+d=1 tpl=中央2x2_右下 traps=5 first=1 (5s)
+d=7 tpl=下段の岩 traps=2 first=1 (5s)
+d=7 tpl=四隅の岩 traps=3 first=1 (6s)
+d=1 tpl=十字の切り株 traps=2 first=1 (7s)
+d=5 tpl=対角の岩 traps=1 first=2 (8s)
+d=1 tpl=中央2x2 traps=2 first=1 (8s)
+d=1 tpl=左右の岩場 traps=0 first=1 (10s)
+d=1 tpl=四隅の岩 traps=3 first=1 (11s)
+d=3 tpl=中央2x2 traps=1 first=1 (13s)
+d=5 tpl=中央2x2 traps=1 first=2 (13s)
+d=3 tpl=左右の岩 traps=3 first=1 (13s)
+d=1 tpl=上段の岩 traps=1 first=1 (13s)
+d=5 tpl=下段の岩 traps=3 first=1 (13s)
+d=5 tpl=上段の岩 traps=2 first=1 (16s)
+d=7 tpl=左右の岩場 traps=2 first=1 (17s)
+d=3 tpl=千鳥の岩 traps=5 first=1 (17s)
+d=7 tpl=両脇の岩 traps=5 first=1 (18s)
+d=7 tpl=十字の切り株 traps=2 first=1 (19s)
+d=3 tpl=対角の岩 traps=5 first=1 (20s)
+d=3 tpl=中央2x2 traps=5 first=1 (20s)
+d=7 tpl=上段の岩 traps=0 first=1 (21s)
+d=5 tpl=下段の岩 traps=4 first=1 (21s)
+d=7 tpl=中央と四隅 traps=3 first=1 (21s)
+d=5 tpl=十字の切り株 traps=0 first=1 (22s)
+d=5 tpl=対角の岩 traps=0 first=1 (22s)
+d=5 tpl=対角の岩 traps=1 first=1 (22s)
+d=3 tpl=上下の岩 traps=3 first=1 (28s)
+d=5 tpl=斜めの切り株 traps=1 first=1 (28s)
+d=3 tpl=中央2x2_右下 traps=4 first=1 (42s)
+d=3 tpl=中央の切り株 traps=1 first=1 (45s)
+d=3 tpl=左上の岩場 traps=4 first=1 (65s)
+d=3 tpl=左右の岩場 traps=1 first=1 (66s)
+d=3 tpl=中央2x2 traps=1 first=1 (70s)
+d=3 tpl=上下の岩 traps=5 first=1 (71s)
+d=3 tpl=左右の岩場 traps=5 first=1 (79s)
+d=3 tpl=千鳥の岩 traps=1 first=1 (79s)
+
+========== 1手詰 (12 候補) ==========
+
+[上下の岩] traps=1 firstMoves=1
+Tx#..
+.....
+.....
+.....
+..#..
+{"walls":["0,2","4,2"],"traps":["0,1"],"tanuki":"0,0"}
+
+[両脇の岩] traps=4 firstMoves=1
+T....
+#..x#
+x.x..
+...x.
+.....
+{"walls":["1,0","1,4"],"traps":["1,3","2,0","2,2","3,3"],"tanuki":"0,0"}
+
+[三隅の岩] traps=4 firstMoves=1
+#.xT#
+.....
+x....
+.x...
+#..x.
+{"walls":["0,0","0,4","4,0"],"traps":["0,2","2,0","3,1","4,3"],"tanuki":"0,3"}
+
+[上下の岩] traps=2 firstMoves=1
+.x#xT
+.....
+.....
+.....
+..#..
+{"walls":["0,2","4,2"],"traps":["0,1","0,3"],"tanuki":"0,4"}
+
+[左右の岩] traps=3 firstMoves=1
+..xTx
+.....
+#...#
+...x.
+.....
+{"walls":["2,0","2,4"],"traps":["0,2","0,4","3,3"],"tanuki":"0,3"}
+
+[四隅の岩] traps=4 firstMoves=1
+#.xT#
+x....
+.....
+.x...
+#.x.#
+{"walls":["0,0","0,4","4,0","4,4"],"traps":["0,2","1,0","3,1","4,2"],"tanuki":"0,3"}
+
+[中央2x2_右下] traps=5 firstMoves=1
+..x.x
+.x..T
+..##x
+..##.
+...x.
+{"walls":["2,2","2,3","3,2","3,3"],"traps":["0,2","0,4","1,1","2,4","4,3"],"tanuki":"1,4"}
+
+[十字の切り株] traps=2 firstMoves=1
+Txx..
+..#..
+.#.#.
+..#..
+.....
+{"walls":["1,2","3,2","2,1","2,3"],"traps":["0,1","0,2"],"tanuki":"0,0"}
+
+[中央2x2] traps=2 firstMoves=1
+.....
+.##.x
+.##..
+....x
+....T
+{"walls":["1,1","1,2","2,1","2,2"],"traps":["1,4","3,4"],"tanuki":"4,4"}
+
+[左右の岩場] traps=0 firstMoves=1
+T....
+#...#
+#...#
+.....
+.....
+{"walls":["1,0","2,0","1,4","2,4"],"traps":[],"tanuki":"0,0"}
+
+[四隅の岩] traps=3 firstMoves=1
+#Tx.#
+.....
+.....
+x..x.
+#...#
+{"walls":["0,0","0,4","4,0","4,4"],"traps":["0,2","3,0","3,3"],"tanuki":"0,1"}
+
+[上段の岩] traps=1 firstMoves=1
+T###x
+.....
+.....
+.....
+.....
+{"walls":["0,1","0,2","0,3"],"traps":["0,4"],"tanuki":"0,0"}
+
+========== 3手詰 (16 候補) ==========
+
+[中央2x2] traps=0 firstMoves=1
+.....
+.##..
+.##..
+T....
+.....
+{"walls":["1,1","1,2","2,1","2,2"],"traps":[],"tanuki":"3,0"}
+
+[下段の岩] traps=4 firstMoves=1
+xx.x.
+.....
+.x...
+..T..
+.###.
+{"walls":["4,1","4,2","4,3"],"traps":["0,0","0,1","0,3","2,1"],"tanuki":"3,2"}
+
+[中央2x2] traps=1 firstMoves=1
+.....
+.##..
+.##..
+..x..
+...T.
+{"walls":["1,1","1,2","2,1","2,2"],"traps":["3,2"],"tanuki":"4,3"}
+
+[左右の岩] traps=3 firstMoves=1
+....x
+...x.
+#...#
+.x...
+..T..
+{"walls":["2,0","2,4"],"traps":["0,4","1,3","3,1"],"tanuki":"4,2"}
+
+[千鳥の岩] traps=5 firstMoves=1
+#....
+..#.x
+xxTx#
+.#.x.
+...#.
+{"walls":["0,0","1,2","2,4","3,1","4,3"],"traps":["1,4","2,0","2,1","2,3","3,3"],"tanuki":"2,2"}
+
+[対角の岩] traps=5 firstMoves=1
+#....
+.#..x
+..Txx
+.x.#x
+....#
+{"walls":["0,0","1,1","3,3","4,4"],"traps":["1,4","2,3","2,4","3,1","3,4"],"tanuki":"2,2"}
+
+[中央2x2] traps=5 firstMoves=1
+xx.xx
+.##..
+.##..
+.T..x
+.....
+{"walls":["1,1","1,2","2,1","2,2"],"traps":["0,0","0,1","0,3","0,4","3,4"],"tanuki":"3,1"}
+
+[上下の岩] traps=3 firstMoves=1
+.T#..
+.x...
+.x...
+....x
+..#..
+{"walls":["0,2","4,2"],"traps":["1,1","2,1","3,4"],"tanuki":"0,1"}
+
+[中央2x2_右下] traps=4 firstMoves=1
+....x
+...x.
+..##.
+.T##.
+..xx.
+{"walls":["2,2","2,3","3,2","3,3"],"traps":["0,4","1,3","4,2","4,3"],"tanuki":"3,1"}
+
+[中央の切り株] traps=1 firstMoves=1
+.....
+.....
+..#..
+....x
+..T..
+{"walls":["2,2"],"traps":["3,4"],"tanuki":"4,2"}
+
+[左上の岩場] traps=4 firstMoves=1
+##...
+#....
+x....
+.x.x.
+.Tx..
+{"walls":["0,0","0,1","1,0"],"traps":["2,0","3,1","3,3","4,2"],"tanuki":"4,1"}
+
+[左右の岩場] traps=1 firstMoves=1
+.....
+#...#
+#...#
+...xT
+.....
+{"walls":["1,0","2,0","1,4","2,4"],"traps":["3,3"],"tanuki":"3,4"}
+
+[中央2x2] traps=1 firstMoves=1
+...T.
+.##..
+.##..
+....x
+.....
+{"walls":["1,1","1,2","2,1","2,2"],"traps":["3,4"],"tanuki":"0,3"}
+
+[上下の岩] traps=5 firstMoves=1
+x.#..
+T..x.
+...x.
+x....
+x.#..
+{"walls":["0,2","4,2"],"traps":["0,0","1,3","2,3","3,0","4,0"],"tanuki":"1,0"}
+
+[左右の岩場] traps=5 firstMoves=1
+..x..
+#...#
+#T..#
+x.x.x
+....x
+{"walls":["1,0","2,0","1,4","2,4"],"traps":["0,2","3,0","3,2","3,4","4,4"],"tanuki":"2,1"}
+
+[千鳥の岩] traps=1 firstMoves=1
+#....
+..#..
+T...#
+.#...
+..x#.
+{"walls":["0,0","1,2","2,4","3,1","4,3"],"traps":["4,2"],"tanuki":"2,0"}
+
+========== 5手詰 (12 候補) ==========
+
+[上段の岩] traps=3 firstMoves=1
+.###.
+.x.T.
+x....
+...x.
+.....
+{"walls":["0,1","0,2","0,3"],"traps":["1,1","2,0","3,3"],"tanuki":"1,3"}
+
+[左右の岩場] traps=2 firstMoves=2
+...T.
+#...#
+#...#
+x....
+....x
+{"walls":["1,0","2,0","1,4","2,4"],"traps":["3,0","4,4"],"tanuki":"0,3"}
+
+[左右の岩場] traps=3 firstMoves=2
+T..x.
+#x..#
+#x..#
+.....
+.....
+{"walls":["1,0","2,0","1,4","2,4"],"traps":["0,3","1,1","2,1"],"tanuki":"0,0"}
+
+[対角の岩] traps=1 firstMoves=2
+#....
+.#x.T
+.....
+...#.
+....#
+{"walls":["0,0","1,1","3,3","4,4"],"traps":["1,2"],"tanuki":"1,4"}
+
+[中央2x2] traps=1 firstMoves=2
+.....
+.##Tx
+.##..
+.....
+.....
+{"walls":["1,1","1,2","2,1","2,2"],"traps":["1,4"],"tanuki":"1,3"}
+
+[下段の岩] traps=3 firstMoves=1
+...x.
+....T
+x....
+....x
+.###.
+{"walls":["4,1","4,2","4,3"],"traps":["0,3","2,0","3,4"],"tanuki":"1,4"}
+
+[上段の岩] traps=2 firstMoves=1
+.###.
+.....
+..x..
+...xT
+.....
+{"walls":["0,1","0,2","0,3"],"traps":["2,2","3,3"],"tanuki":"3,4"}
+
+[下段の岩] traps=4 firstMoves=1
+.x...
+...x.
+.....
+..x.T
+.###x
+{"walls":["4,1","4,2","4,3"],"traps":["0,1","1,3","3,2","4,4"],"tanuki":"3,4"}
+
+[十字の切り株] traps=0 firstMoves=1
+.T...
+..#..
+.#.#.
+..#..
+.....
+{"walls":["1,2","3,2","2,1","2,3"],"traps":[],"tanuki":"0,1"}
+
+[対角の岩] traps=0 firstMoves=1
+#....
+.#...
+.....
+...#.
+..T.#
+{"walls":["0,0","1,1","3,3","4,4"],"traps":[],"tanuki":"4,2"}
+
+[対角の岩] traps=1 firstMoves=1
+#T...
+.#...
+.x...
+...#.
+....#
+{"walls":["0,0","1,1","3,3","4,4"],"traps":["2,1"],"tanuki":"0,1"}
+
+[斜めの切り株] traps=1 firstMoves=1
+....#
+..T#.
+...x.
+.#...
+#....
+{"walls":["0,4","1,3","3,1","4,0"],"traps":["2,3"],"tanuki":"1,2"}
+
+========== 7手詰 (8 候補) ==========
+
+[両脇の岩] traps=3 firstMoves=1
+.....
+#x..#
+...x.
+.xT..
+.....
+{"walls":["1,0","1,4"],"traps":["1,1","2,3","3,1"],"tanuki":"3,2"}
+
+[下段の岩] traps=2 firstMoves=1
+...x.
+.T...
+...x.
+.....
+.###.
+{"walls":["4,1","4,2","4,3"],"traps":["0,3","2,3"],"tanuki":"1,1"}
+
+[四隅の岩] traps=3 firstMoves=1
+#x..#
+.....
+.T...
+..x..
+#.x.#
+{"walls":["0,0","0,4","4,0","4,4"],"traps":["0,1","3,2","4,2"],"tanuki":"2,1"}
+
+[左右の岩場] traps=2 firstMoves=1
+.x...
+#.T.#
+#...#
+x....
+.....
+{"walls":["1,0","2,0","1,4","2,4"],"traps":["0,1","3,0"],"tanuki":"1,2"}
+
+[両脇の岩] traps=5 firstMoves=1
+.xxxx
+#xT.#
+.....
+.....
+.....
+{"walls":["1,0","1,4"],"traps":["0,1","0,2","0,3","0,4","1,1"],"tanuki":"1,2"}
+
+[十字の切り株] traps=2 firstMoves=1
+x....
+.T#..
+.#.#.
+..#.x
+.....
+{"walls":["1,2","3,2","2,1","2,3"],"traps":["0,0","3,4"],"tanuki":"1,1"}
+
+[上段の岩] traps=0 firstMoves=1
+.###.
+.....
+.....
+...T.
+.....
+{"walls":["0,1","0,2","0,3"],"traps":[],"tanuki":"3,3"}
+
+[中央と四隅] traps=3 firstMoves=1
+#.T.#
+.....
+.x#..
+.....
+#xx.#
+{"walls":["2,2","0,0","0,4","4,0","4,4"],"traps":["2,1","4,1","4,2"],"tanuki":"0,2"}

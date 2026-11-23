@@ -1,0 +1,695 @@
+[
+ {
+  "walls": [
+   "1,0",
+   "1,1",
+   "2,1",
+   "2,4",
+   "3,0",
+   "3,4"
+  ],
+  "traps": [
+   "4,1",
+   "4,2",
+   "4,3"
+  ],
+  "tanuki": "0,0",
+  "distance": 1,
+  "firstMoves": 1,
+  "first": [
+   "0,1"
+  ],
+  "cluster": 3,
+  "target": 1
+ },
+ {
+  "walls": [
+   "0,0",
+   "0,1",
+   "3,0",
+   "3,1",
+   "3,3",
+   "3,4"
+  ],
+  "traps": [
+   "3,2"
+  ],
+  "tanuki": "4,4",
+  "distance": 1,
+  "firstMoves": 1,
+  "first": [
+   "4,3"
+  ],
+  "cluster": 3,
+  "target": 1
+ },
+ {
+  "walls": [
+   "0,0",
+   "0,1",
+   "0,2",
+   "2,2",
+   "2,4",
+   "4,4"
+  ],
+  "traps": [
+   "0,4",
+   "1,0",
+   "2,0",
+   "2,1"
+  ],
+  "tanuki": "0,3",
+  "distance": 1,
+  "firstMoves": 1,
+  "first": [
+   "1,3"
+  ],
+  "cluster": 2,
+  "target": 1
+ },
+ {
+  "walls": [
+   "0,1",
+   "0,2",
+   "3,1"
+  ],
+  "traps": [
+   "0,0",
+   "0,4",
+   "3,0",
+   "3,4",
+   "4,1"
+  ],
+  "tanuki": "0,3",
+  "distance": 1,
+  "firstMoves": 1,
+  "first": [
+   "1,3"
+  ],
+  "cluster": 1,
+  "target": 1
+ },
+ {
+  "walls": [
+   "0,3",
+   "2,2",
+   "4,1",
+   "4,2"
+  ],
+  "traps": [
+   "0,2",
+   "1,0",
+   "1,1",
+   "2,1"
+  ],
+  "tanuki": "4,0",
+  "distance": 1,
+  "firstMoves": 1,
+  "first": [
+   "3,0"
+  ],
+  "cluster": 1,
+  "target": 1
+ },
+ {
+  "walls": [
+   "0,3",
+   "3,0",
+   "3,3",
+   "4,1",
+   "4,2"
+  ],
+  "traps": [
+   "3,4"
+  ],
+  "tanuki": "4,4",
+  "distance": 1,
+  "firstMoves": 1,
+  "first": [
+   "4,3"
+  ],
+  "cluster": 1,
+  "target": 1
+ },
+ {
+  "walls": [
+   "1,0",
+   "2,3",
+   "3,4",
+   "4,2",
+   "4,4"
+  ],
+  "traps": [
+   "0,1",
+   "0,3",
+   "0,4",
+   "2,0",
+   "3,1",
+   "3,2"
+  ],
+  "tanuki": "0,2",
+  "distance": 1,
+  "firstMoves": 1,
+  "first": [
+   "1,2"
+  ],
+  "cluster": 1,
+  "target": 1
+ },
+ {
+  "walls": [
+   "0,4",
+   "1,4",
+   "2,0",
+   "2,3",
+   "3,4"
+  ],
+  "traps": [
+   "0,2"
+  ],
+  "tanuki": "4,4",
+  "distance": 1,
+  "firstMoves": 1,
+  "first": [
+   "4,3"
+  ],
+  "cluster": 1,
+  "target": 1
+ },
+ {
+  "walls": [
+   "0,1",
+   "1,2",
+   "2,3"
+  ],
+  "traps": [
+   "3,4"
+  ],
+  "tanuki": "0,0",
+  "distance": 1,
+  "firstMoves": 1,
+  "first": [
+   "1,0"
+  ],
+  "cluster": 0,
+  "target": 1
+ },
+ {
+  "walls": [
+   "0,3",
+   "0,4",
+   "1,0",
+   "1,2",
+   "3,2",
+   "3,3",
+   "4,0"
+  ],
+  "traps": [
+   "0,2",
+   "2,1",
+   "2,3",
+   "3,4",
+   "4,1",
+   "4,4"
+  ],
+  "tanuki": "2,2",
+  "distance": 3,
+  "firstMoves": 1,
+  "first": [
+   "2,1"
+  ],
+  "cluster": 2,
+  "target": 3
+ },
+ {
+  "walls": [
+   "1,0",
+   "1,2",
+   "2,0",
+   "2,1",
+   "2,4",
+   "3,2",
+   "4,1"
+  ],
+  "traps": [],
+  "tanuki": "0,3",
+  "distance": 3,
+  "firstMoves": 1,
+  "first": [
+   "0,4"
+  ],
+  "cluster": 2,
+  "target": 3
+ },
+ {
+  "walls": [
+   "3,1",
+   "4,1"
+  ],
+  "traps": [
+   "1,4",
+   "2,0",
+   "2,1",
+   "2,2",
+   "2,3",
+   "3,0"
+  ],
+  "tanuki": "2,4",
+  "distance": 3,
+  "firstMoves": 1,
+  "first": [
+   "2,3"
+  ],
+  "cluster": 1,
+  "target": 3
+ },
+ {
+  "walls": [
+   "0,4",
+   "2,0",
+   "2,2",
+   "4,1",
+   "4,2"
+  ],
+  "traps": [
+   "0,3",
+   "1,0",
+   "2,1",
+   "2,3",
+   "3,2",
+   "3,4"
+  ],
+  "tanuki": "3,0",
+  "distance": 3,
+  "firstMoves": 1,
+  "first": [
+   "3,2"
+  ],
+  "cluster": 1,
+  "target": 3
+ },
+ {
+  "walls": [
+   "0,2",
+   "0,3",
+   "2,1",
+   "3,0",
+   "4,2"
+  ],
+  "traps": [
+   "1,3"
+  ],
+  "tanuki": "2,4",
+  "distance": 3,
+  "firstMoves": 1,
+  "first": [
+   "3,4"
+  ],
+  "cluster": 1,
+  "target": 3
+ },
+ {
+  "walls": [
+   "0,0",
+   "0,1",
+   "1,3",
+   "2,4",
+   "4,0",
+   "4,4"
+  ],
+  "traps": [
+   "0,2",
+   "0,4",
+   "3,1",
+   "3,3",
+   "3,4",
+   "4,2"
+  ],
+  "tanuki": "1,4",
+  "distance": 3,
+  "firstMoves": 1,
+  "first": [
+   "0,4"
+  ],
+  "cluster": 1,
+  "target": 3
+ },
+ {
+  "walls": [
+   "0,2",
+   "3,0"
+  ],
+  "traps": [
+   "0,0",
+   "1,2",
+   "3,1",
+   "3,4"
+  ],
+  "tanuki": "4,2",
+  "distance": 3,
+  "firstMoves": 1,
+  "first": [
+   "4,3"
+  ],
+  "cluster": 0,
+  "target": 3
+ },
+ {
+  "walls": [
+   "2,2",
+   "4,2"
+  ],
+  "traps": [
+   "0,4",
+   "1,2",
+   "1,4",
+   "2,1",
+   "3,4",
+   "4,0"
+  ],
+  "tanuki": "4,3",
+  "distance": 3,
+  "firstMoves": 1,
+  "first": [
+   "3,2"
+  ],
+  "cluster": 0,
+  "target": 3
+ },
+ {
+  "walls": [
+   "0,0",
+   "0,3",
+   "1,2",
+   "1,3",
+   "3,1",
+   "3,2",
+   "4,1"
+  ],
+  "traps": [],
+  "tanuki": "2,3",
+  "distance": 3,
+  "firstMoves": 2,
+  "first": [
+   "2,4",
+   "3,3"
+  ],
+  "cluster": 4,
+  "target": 3
+ },
+ {
+  "walls": [
+   "0,0",
+   "1,1",
+   "1,4",
+   "2,1",
+   "2,2",
+   "2,3",
+   "3,1"
+  ],
+  "traps": [
+   "1,3",
+   "3,3",
+   "4,3",
+   "4,4"
+  ],
+  "tanuki": "4,1",
+  "distance": 3,
+  "firstMoves": 3,
+  "first": [
+   "3,2",
+   "3,3",
+   "4,3"
+  ],
+  "cluster": 4,
+  "target": 3
+ },
+ {
+  "walls": [
+   "1,1",
+   "2,1",
+   "4,3"
+  ],
+  "traps": [
+   "0,0"
+  ],
+  "tanuki": "2,0",
+  "distance": 3,
+  "firstMoves": 3,
+  "first": [
+   "3,1",
+   "3,2",
+   "4,0"
+  ],
+  "cluster": 1,
+  "target": 3
+ },
+ {
+  "walls": [
+   "0,2",
+   "0,3",
+   "2,0",
+   "2,1",
+   "4,3",
+   "4,4"
+  ],
+  "traps": [],
+  "tanuki": "2,4",
+  "distance": 5,
+  "firstMoves": 1,
+  "first": [
+   "2,3"
+  ],
+  "cluster": 3,
+  "target": 5
+ },
+ {
+  "walls": [
+   "0,0",
+   "0,1",
+   "0,2"
+  ],
+  "traps": [
+   "2,3",
+   "3,2"
+  ],
+  "tanuki": "3,1",
+  "distance": 5,
+  "firstMoves": 1,
+  "first": [
+   "2,1"
+  ],
+  "cluster": 2,
+  "target": 5
+ },
+ {
+  "walls": [
+   "0,0",
+   "2,1",
+   "2,2",
+   "3,1",
+   "4,0"
+  ],
+  "traps": [],
+  "tanuki": "4,3",
+  "distance": 5,
+  "firstMoves": 1,
+  "first": [
+   "3,4"
+  ],
+  "cluster": 2,
+  "target": 5
+ },
+ {
+  "walls": [
+   "0,2",
+   "0,3"
+  ],
+  "traps": [
+   "1,4",
+   "2,0",
+   "3,3",
+   "4,2",
+   "4,3"
+  ],
+  "tanuki": "0,4",
+  "distance": 5,
+  "firstMoves": 1,
+  "first": [
+   "1,3"
+  ],
+  "cluster": 1,
+  "target": 5
+ },
+ {
+  "walls": [
+   "0,2",
+   "0,4",
+   "1,2"
+  ],
+  "traps": [
+   "4,0"
+  ],
+  "tanuki": "1,1",
+  "distance": 5,
+  "firstMoves": 1,
+  "first": [
+   "2,1"
+  ],
+  "cluster": 1,
+  "target": 5
+ },
+ {
+  "walls": [
+   "0,2",
+   "1,1",
+   "2,3",
+   "3,3"
+  ],
+  "traps": [
+   "0,1",
+   "0,3",
+   "2,4",
+   "4,2",
+   "4,3",
+   "4,4"
+  ],
+  "tanuki": "2,0",
+  "distance": 5,
+  "firstMoves": 1,
+  "first": [
+   "3,1"
+  ],
+  "cluster": 1,
+  "target": 5
+ },
+ {
+  "walls": [
+   "0,1",
+   "0,3",
+   "1,0",
+   "1,3"
+  ],
+  "traps": [
+   "3,2",
+   "4,4"
+  ],
+  "tanuki": "3,0",
+  "distance": 5,
+  "firstMoves": 1,
+  "first": [
+   "2,1"
+  ],
+  "cluster": 1,
+  "target": 5
+ },
+ {
+  "walls": [
+   "0,0",
+   "1,1",
+   "3,2",
+   "3,3",
+   "4,4"
+  ],
+  "traps": [
+   "0,1",
+   "1,4",
+   "2,0"
+  ],
+  "tanuki": "0,3",
+  "distance": 5,
+  "firstMoves": 1,
+  "first": [
+   "1,2"
+  ],
+  "cluster": 1,
+  "target": 5
+ },
+ {
+  "walls": [
+   "0,2",
+   "3,3",
+   "4,2"
+  ],
+  "traps": [
+   "0,3",
+   "1,1",
+   "1,4",
+   "2,1",
+   "3,0"
+  ],
+  "tanuki": "4,1",
+  "distance": 5,
+  "firstMoves": 1,
+  "first": [
+   "3,2"
+  ],
+  "cluster": 0,
+  "target": 5
+ },
+ {
+  "walls": [
+   "0,0",
+   "0,2",
+   "2,0"
+  ],
+  "traps": [
+   "1,3",
+   "2,2",
+   "3,1"
+  ],
+  "tanuki": "3,0",
+  "distance": 5,
+  "firstMoves": 1,
+  "first": [
+   "2,2"
+  ],
+  "cluster": 0,
+  "target": 5
+ },
+ {
+  "walls": [
+   "1,1",
+   "1,3",
+   "4,2"
+  ],
+  "traps": [
+   "1,0",
+   "1,2",
+   "1,4",
+   "3,0",
+   "3,4"
+  ],
+  "tanuki": "2,1",
+  "distance": 5,
+  "firstMoves": 1,
+  "first": [
+   "3,2"
+  ],
+  "cluster": 0,
+  "target": 5
+ },
+ {
+  "walls": [
+   "0,0",
+   "0,2",
+   "0,3",
+   "0,4",
+   "1,0",
+   "1,1",
+   "2,2"
+  ],
+  "traps": [
+   "4,3"
+  ],
+  "tanuki": "3,4",
+  "distance": 5,
+  "firstMoves": 2,
+  "first": [
+   "2,3",
+   "3,3"
+  ],
+  "cluster": 4,
+  "target": 5
+ }
+]

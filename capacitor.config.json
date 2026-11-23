@@ -1,0 +1,10 @@
+{
+  "appId": "jp.signlink.KachiCatch",
+  "appName": "Kachi Kachi Catch",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#FFF8EA",
+    "scrollEnabled": false
+  }
+}

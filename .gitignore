@@ -1,0 +1,8 @@
+node_modules/
+tmp/
+build/
+.DS_Store
+*.xcuserdatad/
+ios/App/App/public/
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/

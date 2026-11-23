@@ -1,0 +1,22 @@
+{
+  "name": "kachi-kachi-catch",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Kachi Kachi Catch — 5x5 catching puzzle (Capacitor iOS / Build 1)",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node --test test/solver.test.mjs test/stages.test.mjs test/daily.test.mjs test/pro.test.mjs test/i18n.test.mjs test/game.test.mjs",
+    "serve": "python3 -m http.server 8123",
+    "www": "node tools/make-www.mjs",
+    "ios:sync": "cap sync ios"
+  },
+  "engines": { "node": ">=22.0.0" },
+  "dependencies": {
+    "@capacitor/core": "8.6.2",
+    "@capacitor/ios": "8.6.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.2"
+  }
+}
