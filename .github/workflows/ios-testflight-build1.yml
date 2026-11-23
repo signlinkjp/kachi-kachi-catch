@@ -1,0 +1,391 @@
+# Kachi Kachi Catch iOS TestFlight Build 1
+# ============================================================
+# Build 1（Capacitor iOS 化・50問+デイリー120問・PRO 課金・12言語・ハプティクス）
+# 用のワークフロー。トモアキさんが Safari で GitHub に貼り付ける用。
+#
+#   .github/workflows/ios-testflight-build1.yml
+#
+# GitHub連携の権限ではワークフローファイルを直接 push できないため、
+# このファイルの中身をそのままコピーして上に貼ってください（DOROKEI / JANKeN PoN と同じ手順）。
+# 1行目は必ず「# 」で始まる YAML コメントのままにしてください。
+#
+# 使い方:
+#   Actions →「Kachi Kachi Catch iOS TestFlight」→ Run workflow
+#     - confirm_bundle_id に `jp.signlink.KachiCatch`
+#     - upload_to_testflight は true（TestFlight へ配信）
+#     - build_number は空欄でOK（iOS プロジェクトの CURRENT_PROJECT_VERSION を自動で読みます）
+#   ※ ビルド番号は ios/App/App.xcodeproj/project.pbxproj の CURRENT_PROJECT_VERSION が正。
+#      空欄ならその値をそのまま、入力すればプロジェクトを書き換えてから署名します
+#      （preflight とアップロードで番号がずれません）。
+#
+# 必要な Secrets（既存リポジトリと同じ値）:
+#   APPLE_TEAM_ID                   … 例 TGBNH8WJV6
+#   APPSTORE_CONNECT_KEY_ID         … App Store Connect API キーの Key ID（ASC_API_KEY_ID でも可）
+#   APPSTORE_CONNECT_ISSUER_ID      … Issuer ID（ASC_API_ISSUER_ID でも可）
+#   APPSTORE_CONNECT_PRIVATE_KEY    … AuthKey_*.p8 の中身（ASC_API_KEY_P8 でも可）
+# ============================================================
+
+name: Kachi Kachi Catch iOS TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_bundle_id:
+        description: "確認のため bundle ID を入力: jp.signlink.KachiCatch"
+        required: true
+        type: string
+        default: "jp.signlink.KachiCatch"
+      upload_to_testflight:
+        description: "TestFlight へアップロードする（false = 署名済みIPAの作成まで）"
+        required: true
+        type: boolean
+        default: true
+      build_number:
+        description: "ビルド番号（空欄なら iOS プロジェクトの値を自動で使う）"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kachi-catch-ios-testflight
+  cancel-in-progress: false
+
+env:
+  BUNDLE_ID: jp.signlink.KachiCatch
+  APP_NAME: Kachi Kachi Catch
+  MARKETING_VERSION: "1.0.0"
+
+jobs:
+  preflight:
+    name: Web preflight（テスト・構成チェック・ビルド番号の確定）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Confirm run intent
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          CONFIRM: ${{ inputs.confirm_bundle_id }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRM" = "$BUNDLE_ID"
+
+      - name: Install web dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run the rule, solver and Build 1 tests (50 stages + 120 daily)
+        run: npm test
+
+      - name: Resolve the build number (auto-read from the iOS project)
+        run: |
+          set -euo pipefail
+          PROJECT=ios/App/App.xcodeproj/project.pbxproj
+          test -f "$PROJECT"
+          FROM_PROJECT=$(python3 - <<'PY'
+          import pathlib, re
+          text = pathlib.Path('ios/App/App.xcodeproj/project.pbxproj').read_text()
+          values = sorted(set(re.findall(r'CURRENT_PROJECT_VERSION = (\d+);', text)))
+          assert len(values) == 1, f'CURRENT_PROJECT_VERSION が1つに揃っていません: {values}'
+          print(values[0])
+          PY
+          )
+          INPUT="${{ github.event.inputs.build_number }}"
+          if [ -n "$INPUT" ]; then
+            echo "::notice::入力されたビルド番号 $INPUT を使います（プロジェクトを書き換えます）"
+            python3 - "$INPUT" <<'PY'
+          import pathlib, re, sys
+          want = sys.argv[1]
+          assert want.isdigit(), 'ビルド番号は数字のみ'
+          p = pathlib.Path('ios/App/App.xcodeproj/project.pbxproj')
+          text = re.sub(r'CURRENT_PROJECT_VERSION = \d+;', f'CURRENT_PROJECT_VERSION = {want};', p.read_text())
+          p.write_text(text)
+          PY
+            BUILD="$INPUT"
+          else
+            BUILD="$FROM_PROJECT"
+            echo "::notice::iOS プロジェクトからビルド番号 $BUILD を読み取りました"
+          fi
+          echo "BUILD_NUMBER=$BUILD" >> "$GITHUB_ENV"
+          echo "build=$BUILD"
+
+      - name: Guard the shipped game files
+        run: |
+          set -euo pipefail
+          for f in src/solver.js src/stages.js src/daily.js src/solutions.js src/game.js \
+                   src/i18n.js src/audio.js src/haptics.js src/pro.js src/storage.js \
+                   src/dailylogic.js src/main.js tools/make-www.mjs; do
+            node --check "$f" || exit 1
+          done
+          # 商品ID（PRO）
+          grep -q "PRODUCT_ID = \"jp.signlink.KachiCatch.pro\"" src/pro.js
+          grep -q 'jp.signlink.KachiCatch.pro' ios/App/App/AppDelegate.swift
+          grep -q 'jsName = "StoreKit"' ios/App/App/AppDelegate.swift
+          grep -q 'jsName = "KachiHaptics"' ios/App/App/AppDelegate.swift
+          # 12言語
+          for lang in '"ja"' '"en"' '"zh-Hans"' '"zh-Hant"' '"ko"' '"es"' '"fr"' '"de"' '"pt"' '"it"' '"hi"' '"id"'; do
+            grep -q "$lang" src/i18n.js || { echo "::error::言語 $lang がありません"; exit 1; }
+          done
+          grep -q 'Usagiro' src/i18n.js
+          grep -q 'ポコ丸' src/i18n.js
+          # 十字＋8方向のルールとタップ制限
+          grep -q 'tanukiOptionsMask' src/solver.js
+          grep -q 'cell === pos' src/solver.js
+          # ステージ数とデイリー数
+          node -e "import('./src/stages.js').then(m=>{if(m.STAGES.length!==50)process.exit(1)})"
+          node -e "import('./src/daily.js').then(m=>{if(m.DAILY.length<120)process.exit(1)})"
+          # アイコン（1024・RGB・透過なし）
+          python3 - <<'PY'
+          import struct, pathlib
+          for path in ['assets/kachi-appicon-1024.png',
+                       'ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png']:
+              data = pathlib.Path(path).read_bytes()
+              assert data[:4] == b'\x89PNG', path
+              width, height = struct.unpack('>II', data[16:24])
+              depth, color = data[24], data[25]
+              assert (width, height) == (1024, 1024), (path, width, height)
+              assert (depth, color) == (8, 2), (path, depth, color)  # RGB, no alpha
+          print('icons OK')
+          PY
+          # 配布用 www が作れる
+          node tools/make-www.mjs
+          test -f www/index.html
+          test -f www/src/main.js
+          test -f www/src/i18n.js
+          test -f www/src/pro.js
+          test -f www/assets/tanuki_token.png
+          echo "Kachi Kachi Catch web assets OK"
+
+      - name: Guard the iOS project contract
+        run: |
+          set -euo pipefail
+          test -f ios/App/App.xcodeproj/project.pbxproj
+          test -f ios/App/App/Info.plist
+          test -f ios/App/App/AppDelegate.swift
+          test -f ios/App/App/SceneDelegate.swift
+          test -f ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
+          test -f ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme
+          test ! -d ios/App/App/public
+          grep -q 'PRODUCT_BUNDLE_IDENTIFIER = jp.signlink.KachiCatch;' ios/App/App.xcodeproj/project.pbxproj
+          grep -q 'TARGETED_DEVICE_FAMILY = "1,2";' ios/App/App.xcodeproj/project.pbxproj
+          grep -q 'import StoreKit' ios/App/App/AppDelegate.swift
+          grep -q 'KachiBridgeViewController' ios/App/App/SceneDelegate.swift
+          grep -q 'KachiHapticsPlugin' ios/App/App/AppDelegate.swift
+          python3 - <<'PY'
+          import os, plistlib, pathlib
+          plist = plistlib.loads(pathlib.Path('ios/App/App/Info.plist').read_bytes())
+          assert plist['CFBundleDisplayName'] == 'Kachi Kachi Catch', plist['CFBundleDisplayName']
+          pbx = pathlib.Path('ios/App/App.xcodeproj/project.pbxproj').read_text()
+          assert 'PRODUCT_BUNDLE_IDENTIFIER = jp.signlink.KachiCatch;' in pbx
+          assert 'MARKETING_VERSION = 1.0.0;' in pbx
+          version = os.environ['BUILD_NUMBER']
+          assert f'CURRENT_PROJECT_VERSION = {version};' in pbx, 'BUILD_NUMBER と iOS の版番号が違います'
+          print('iOS project contract OK (build %s)' % version)
+          PY
+
+  testflight:
+    name: Xcode で署名 → IPA → TestFlight
+    needs: preflight
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.APPSTORE_CONNECT_KEY_ID || secrets.ASC_API_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID || secrets.ASC_API_ISSUER_ID }}
+      ASC_PRIVATE_KEY: ${{ secrets.APPSTORE_CONNECT_PRIVATE_KEY || secrets.ASC_API_KEY_P8 }}
+      UPLOAD: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_to_testflight || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Apple secret contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TEAM_ID" || { echo "::error::APPLE_TEAM_ID が未設定です"; exit 1; }
+          test -n "$ASC_KEY_ID" || { echo "::error::APPSTORE_CONNECT_KEY_ID（または ASC_API_KEY_ID）が未設定です"; exit 1; }
+          test -n "$ASC_ISSUER_ID" || { echo "::error::APPSTORE_CONNECT_ISSUER_ID（または ASC_API_ISSUER_ID）が未設定です"; exit 1; }
+          test -n "$ASC_PRIVATE_KEY" || { echo "::error::APPSTORE_CONNECT_PRIVATE_KEY（または ASC_API_KEY_P8）が未設定です"; exit 1; }
+          echo "Secrets present."
+
+      - name: Xcode environment
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Resolve the build number again (same rule as preflight)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD=$(python3 - <<'PY'
+          import pathlib, re
+          text = pathlib.Path('ios/App/App.xcodeproj/project.pbxproj').read_text()
+          values = sorted(set(re.findall(r'CURRENT_PROJECT_VERSION = (\d+);', text)))
+          assert len(values) == 1
+          print(values[0])
+          PY
+          )
+          echo "BUILD_NUMBER=$BUILD" >> "$GITHUB_ENV"
+          echo "build=$BUILD"
+
+      - name: Write the App Store Connect key
+        shell: bash
+        run: |
+          set -euo pipefail
+          AUTH_KEY_PATH="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          export AUTH_KEY_PATH
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          value = os.environ["ASC_PRIVATE_KEY"]
+          value = value.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n").strip()
+          if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+              value = value[1:-1].strip()
+          if "\\n" in value and "\n" not in value:
+              value = value.replace("\\n", "\n")
+          if "-----BEGIN" not in value:
+              try:
+                  decoded = base64.b64decode("".join(value.split()), validate=True).decode("utf-8")
+                  if "-----BEGIN" in decoded:
+                      value = decoded.strip()
+              except Exception:
+                  pass
+          Path(os.environ["AUTH_KEY_PATH"]).write_text(value + "\n", encoding="utf-8")
+          PY
+          chmod 600 "$AUTH_KEY_PATH"
+          if ! openssl pkey -in "$AUTH_KEY_PATH" -noout >/dev/null 2>&1; then
+            echo "::error::ASC_PRIVATE_KEY が正しい .p8（PEM秘密鍵）ではありません。AuthKey_*.p8 の中身を丸ごとコピーしてください。"
+            exit 1
+          fi
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          cp "$AUTH_KEY_PATH" "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          echo "AUTH_KEY_PATH=$AUTH_KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Build www and sync Capacitor
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          node tools/make-www.mjs
+          npx cap sync ios
+          test -f ios/App/App/public/index.html
+          test -f ios/App/App/public/src/main.js
+          test -f ios/App/App/public/src/i18n.js
+          test -f ios/App/App/public/src/pro.js
+          test -f ios/App/App/public/assets/tanuki_token.png
+          grep -q 'Kachi Kachi Catch' ios/App/App/public/index.html
+          echo "Capacitor sync OK"
+
+      - name: Archive (Xcode cloud signing)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/release
+          set -o pipefail
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -archivePath "$PWD/build/release/KachiKachiCatch.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$AUTH_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            clean archive | tee build/release/archive.log
+
+      - name: Prove the PRO and haptics plugins are in the binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$PWD/build/release/KachiKachiCatch.xcarchive/Products/Applications/App.app/App"
+          test -f "$APP"
+          strings "$APP" | grep -q "jp.signlink.KachiCatch.pro" \
+            || { echo "::error::PRO の商品IDがバイナリに入っていません"; exit 1; }
+          strings "$APP" | grep -q "KachiHaptics" \
+            || { echo "::error::KachiHapticsPlugin がバイナリに入っていません"; exit 1; }
+          echo "StoreKit product id and haptics plugin present in the binary"
+
+      - name: Export App Store Connect IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>teamID</key>
+            <string>$TEAM_ID</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+          set -o pipefail
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$PWD/build/release/KachiKachiCatch.xcarchive" \
+            -exportPath "$PWD/build/release/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$AUTH_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            | tee build/release/export.log
+          IPA_PATH=$(find "$PWD/build/release/export" -maxdepth 1 -name "*.ipa" -print -quit)
+          test -n "$IPA_PATH"
+          echo "IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
+          shasum -a 256 "$IPA_PATH" | tee build/release/IPA_SHA256.txt
+
+      - name: Validate the IPA with App Store Connect
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun altool --validate-app -f "$IPA_PATH" -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" \
+            --output-format json | tee build/release/altool-validate.json
+
+      - name: Upload to TestFlight
+        if: ${{ env.UPLOAD == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun altool --upload-app -f "$IPA_PATH" -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" \
+            --output-format json | tee build/release/altool-upload.json
+
+      - name: Keep the build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kachi-catch-testflight-build1-evidence
+          path: |
+            build/release/*.log
+            build/release/*.json
+            build/release/IPA_SHA256.txt
+          if-no-files-found: warn
+          retention-days: 30
