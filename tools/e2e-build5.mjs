@@ -182,16 +182,16 @@ const shot = async (page, name) => {
 {
   const { ctx, page, errors } = await newPage({ width: 393, height: 852 }, { lang: "ja" });
   const v = await page.evaluate(() => window.kachi.version);
-  check("Build 5 として起動する", v.build === 5 && v.marketing === "1.0.0", JSON.stringify(v));
+  check("現行ビルドとして起動する（Build 6）", v.build === 6 && v.marketing === "1.0.0", JSON.stringify(v));
   const ver = await page.evaluate(() => document.querySelector("#version-line").textContent);
-  check("設定画面の版が 1.0.0 (5)", /1\.0\.0 \(5\)/.test(ver), ver);
+  check("設定画面の版が 1.0.0 (6)", /1\.0\.0 \(6\)/.test(ver), ver);
 
   // 起動直後はオープニング。追いかけの2人が動いている
   const early = await page.evaluate(() => {
     const op = document.querySelector("#screen-opening");
     const tanuki = document.querySelector("#chase-tanuki");
     const usagiro = document.querySelector("#chase-usagiro");
-    const mallet = document.querySelector("#chase-usagiro .chase-mallet");
+    const sprite = document.querySelector("#chase-usagiro .run-body");
     const anims = (el) => (el ? el.getAnimations().map((a) => ({ duration: Math.round(a.effect.getTiming().duration), name: a.animationName || "" })) : []);
     const cs = getComputedStyle(document.querySelector("#open-chase"));
     return {
@@ -199,7 +199,7 @@ const shot = async (page, name) => {
       playing: op.classList.contains("playing"),
       tanukiAnim: anims(tanuki),
       usagiroAnim: anims(usagiro),
-      malletAnim: anims(mallet),
+      spriteAnim: anims(sprite),
       tanukiOpacity: Number(getComputedStyle(tanuki).opacity),
       usagiroOpacity: Number(getComputedStyle(usagiro).opacity),
       chaseOpacity: Number(cs.opacity),
@@ -209,8 +209,8 @@ const shot = async (page, name) => {
   });
   check("起動直後はオープニング画面", early.screen === "opening" && early.playing === true, JSON.stringify({ screen: early.screen, playing: early.playing }));
   check("ポコ丸とウサギローの追いかけアニメが動いている", early.tanukiAnim.length > 0 && early.usagiroAnim.length > 0, JSON.stringify({ t: early.tanukiAnim, u: early.usagiroAnim }));
-  check("追いかけは1.6秒（transform と opacity だけ）", [early.tanukiAnim, early.usagiroAnim].every((a) => a.some((x) => x.duration === 1600)), JSON.stringify([early.tanukiAnim, early.usagiroAnim]));
-  check("ウサギローは臼の杵を持って振っている", early.malletAnim.length > 0, JSON.stringify(early.malletAnim));
+  check("追いかけは1.5秒（transform と opacity だけ）", [early.tanukiAnim, early.usagiroAnim].every((a) => a.some((x) => x.duration === 1500)), JSON.stringify([early.tanukiAnim, early.usagiroAnim]));
+  check("ウサギローは全身キャラの4コマ走りで足を動かしている", early.spriteAnim.some((x) => x.name === "runCycle"), JSON.stringify(early.spriteAnim));
   check("追いかけの2人が見えていて、位置が動いている", early.tanukiOpacity > 0.05 && early.usagiroOpacity > 0.05 && early.tanukiTransform !== "none", JSON.stringify({ to: early.tanukiOpacity, uo: early.usagiroOpacity, tr: early.tanukiTransform }));
   check("追いかけの層はタップを受けない（pointer-events: none）", early.chasePE === "none" && early.chaseOpacity === 1, JSON.stringify({ pe: early.chasePE, op: early.chaseOpacity }));
 
@@ -242,8 +242,8 @@ const shot = async (page, name) => {
     for (const el of document.querySelectorAll(".chase-runner")) for (const a of el.getAnimations()) a.play();
   });
 
-  // 1.75秒でホームへ。オープニングの層は完全に消える
-  await page.waitForTimeout(1600);
+  // 2.1秒でホームへ。オープニングの層は完全に消える
+  await page.waitForTimeout(2000);
   const after = await page.evaluate(() => {
     const op = document.querySelector("#screen-opening");
     const runners = Array.from(document.querySelectorAll(".chase-runner"));
@@ -259,7 +259,7 @@ const shot = async (page, name) => {
       hit: top ? { cls: typeof top.className === "string" ? top.className : "", play: !!top.closest("#btn-play") } : null,
     };
   });
-  check("約1.75秒で自動的にホームへ", after.screen === "title", after.screen);
+  check("約2.1秒で自動的にホームへ", after.screen === "title", after.screen);
   check("オープニングは非表示（active なし・playing なし）", after.active === false && after.playing === false, JSON.stringify({ active: after.active, playing: after.playing }));
   check("追いかけの層は完全に消える（opacity 0・アニメ停止）", after.chaseOpacity === 0 && after.runnerOpacity.every((o) => o === 0) && after.runnerANim.every((n) => n === 0), JSON.stringify(after));
   check("ホームの「あそぶ」が最前面で押せる", !!after.hit && after.hit.play === true, JSON.stringify(after.hit));

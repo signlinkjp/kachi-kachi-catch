@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Kachi Kachi Catch Build 5（追いかけオープニング・シェア・「○マス」表記・STAGE 25 の PRO 案内） -->
+<!-- Kachi Kachi Catch Build 6（オープニングの全身キャラ走り・結果カードのゴーストタップ修正） -->
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
@@ -8,6 +8,9 @@
 <meta name="format-detection" content="telephone=no" />
 <title>Kachi Kachi Catch</title>
 <link rel="stylesheet" href="styles.css" />
+<!-- Build 6: オープニングの走りスプライトは最初に出すので先に読み込む -->
+<link rel="preload" as="image" href="assets/tanuki_run.png" />
+<link rel="preload" as="image" href="assets/rabbit_run.png" />
 </head>
 <body>
 <div id="app">
@@ -17,21 +20,19 @@
     <div class="open-bg"></div>
     <div class="open-sun"></div>
     <div class="open-inner">
-      <!-- Build 5: 臼の杵を持ったウサギローがポコ丸を追いかける導入。
-           transform と opacity だけで動かし、タップは .screen が受ける（オーバーレイは pointer-events: none）。 -->
+      <!-- Build 6: 臼の杵を持ったウサギローが、全身で走ってポコ丸を追いかける導入。
+           丸枠なしの全身スプライト（assets/tanuki_run.png / rabbit_run.png の4コマ）を
+           steps() でコマ送りし、走る位置は transform だけで動かす。
+           タップは .screen が受ける（この層は pointer-events: none）。 -->
       <div class="open-chase" id="open-chase" aria-hidden="true">
         <span class="chase-runner chase-tanuki" id="chase-tanuki">
-          <img class="open-tanuki" src="assets/tanuki_token.png" alt="" />
-          <i class="chase-sweat">💦</i>
-          <i class="chase-speed s1"></i>
-          <i class="chase-speed s2"></i>
-          <i class="chase-dust d1"></i>
-          <i class="chase-dust d2"></i>
+          <span class="run-body"></span>
+          <i class="chase-dust d1"></i><i class="chase-dust d2"></i><i class="chase-dust d3"></i>
         </span>
         <span class="chase-runner chase-usagiro" id="chase-usagiro">
-          <img class="open-rabbit" src="assets/rabbit_token.png" alt="" />
-          <i class="chase-speed s1"></i>
-          <i class="chase-mallet"></i>
+          <span class="run-body"></span>
+          <i class="chase-speed s1"></i><i class="chase-speed s2"></i>
+          <i class="chase-dust d1"></i><i class="chase-dust d2"></i><i class="chase-dust d3"></i>
         </span>
       </div>
       <h1 class="open-title" id="open-title">Kachi Kachi Catch</h1>
@@ -307,7 +308,7 @@
         <span data-i18n="settings.privacy">プライバシーポリシー</span>
         <span class="set-value"><b>›</b></span>
       </div>
-      <p class="version" id="version-line">Kachi Kachi Catch 1.0.0 (5)</p>
+      <p class="version" id="version-line">Kachi Kachi Catch 1.0.0 (6)</p>
     </div>
   </section>
 

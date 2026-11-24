@@ -52,44 +52,41 @@ function keyframeProps(css, name) {
   return props;
 }
 
-/* ---------------- 1. オープニング（追いかけアニメ） ---------------- */
-
-test("オープニング: 臼の杵を持ったウサギローがポコ丸を追いかける要素がある", () => {
+/* ---------------- 1. オープニング（Build 6 で全身キャラに刷新済み） ----------------
+   Build 5 の丸アイコン2人（open-tanuki / open-rabbit）は Build 6 で
+   全身スプライト（.run-body）に置き換えた。ここでは「オープニングの層が
+   タップを邪魔しない・オープニング中だけ動く・終わったら完全に消える」という
+   Build 4/5 からの約束が残っていることだけを見る（走りの詳細は build6.test.mjs）。 */
+test("オープニング: 追いかけの層があり、2人が走る要素を持っている", () => {
   const html = read("index.html");
   assert.match(html, /id="open-chase"/);
   assert.match(html, /id="chase-tanuki"/);
   assert.match(html, /id="chase-usagiro"/);
-  // 追われるポコ丸と、杵（木槌）を持ったウサギローの2人
-  assert.match(html, /class="open-tanuki" src="assets\/tanuki_token\.png"/);
-  assert.match(html, /class="open-rabbit" src="assets\/rabbit_token\.png"/);
-  const usagiro = html.slice(html.indexOf('id="chase-usagiro"'), html.indexOf("</span>", html.indexOf('id="chase-usagiro"')));
-  assert.match(usagiro, /class="chase-mallet"/, "ウサギローが杵（臼の杵）を持っていない");
-  assert.match(usagiro, /class="open-rabbit"/);
-  // 逃げるポコ丸は汗をかいて慌てている
-  const tanuki = html.slice(html.indexOf('id="chase-tanuki"'), html.indexOf("</span>", html.indexOf('id="chase-tanuki"')));
-  assert.match(tanuki, /class="chase-sweat"/);
+  assert.equal([...html.matchAll(/class="run-body"/g)].length, 2, "全身キャラの枠が2つでない");
+  const tanuki = html.slice(html.indexOf('id="chase-tanuki"'), html.indexOf("</span>\n        </span>", html.indexOf('id="chase-tanuki"')));
+  assert.match(tanuki, /class="chase-dust/, "土煙が無い");
 });
 
-test("オープニング: transform と opacity だけで、約1.6秒の軽量アニメ", () => {
+test("オープニング: transform と opacity だけで軽量に動く", () => {
   const css = read("styles.css");
-  for (const name of ["chaseTanuki", "chaseUsagiro", "malletBob", "sweatPop", "dustPuff", "speedFlick"]) {
+  for (const name of ["chaseTanuki", "chaseUsagiro", "dustPuff", "speedFlick"]) {
     const props = keyframeProps(css, name);
     for (const p of props) {
       assert.ok(p === "transform" || p === "opacity", `${name} が重いプロパティ ${p} を動かしている`);
     }
   }
-  // 位置・大きさ・色をアニメで動かしていない（transform だけ）
-  assert.match(css, /#screen-opening\.playing \.chase-tanuki \{ animation: chaseTanuki 1\.6s/);
-  assert.match(css, /#screen-opening\.playing \.chase-usagiro \{ animation: chaseUsagiro 1\.6s/);
+  // コマ送りも transform ではなく背景位置（軽い）で行う
+  const cycle = keyframeProps(css, "runCycle");
+  assert.deepEqual([...cycle], ["background-position"]);
   // will-change で合成レイヤーに載せる
-  const runner = css.slice(css.indexOf(".chase-runner {"), css.indexOf(".chase-tanuki {"));
+  const runner = css.slice(css.indexOf(".chase-runner {"), css.indexOf(".chase-usagiro {"));
   assert.match(runner, /will-change: transform, opacity;/);
-  // 1.5〜1.8秒（タップで即スキップも可）
+  // タップで即スキップできる
   const main = read("src/main.js");
   const m = main.match(/openingTimer = setTimeout\(finishOpening, (\d+)\);/);
   assert.ok(m, "オープニングのタイマーが無い");
   const ms = Number(m[1]);
-  assert.ok(ms >= 1500 && ms <= 1800, `オープニングが ${ms}ms`);
+  assert.ok(ms >= 1500 && ms <= 2600, `オープニングが ${ms}ms`);
   assert.match(main, /\$\("#screen-opening"\)\.addEventListener\("pointerdown", \(\) => \{[\s\S]*?finishOpening\(\);/);
 });
 
@@ -100,7 +97,7 @@ test("オープニング: タップをブロックせず、終了後・スキッ
   assert.match(chase, /pointer-events: none;/);
   // オープニング中だけ動く（離れたら .playing が外れて opacity 0・アニメなし）
   assert.match(css, /#screen-opening:not\(\.playing\) \.open-chase \{ opacity: 0; \}/);
-  const runner = css.slice(css.indexOf(".chase-runner {"), css.indexOf(".chase-tanuki {"));
+  const runner = css.slice(css.indexOf(".chase-runner {"), css.indexOf(".chase-usagiro {"));
   assert.match(runner, /opacity: 0;/);
   assert.match(runner, /pointer-events: none;/);
   // 画面を移るときに .playing を外す
@@ -278,20 +275,20 @@ test("逃げ場の単位: 「4マス」のように単位が付く（12言語）
 test("版: Build 5（package.json / index.html / main.js / iOS）", () => {
   const pkg = json("package.json");
   assert.equal(pkg.version, "1.0.0");
-  assert.equal(pkg.build, 5);
-  assert.match(pkg.description, /Build 5/);
-  assert.match(read("index.html"), /1\.0\.0 \(5\)/);
-  assert.match(read("src/main.js"), /const BUILD = 5;/);
+  assert.equal(pkg.build >= 6, true);
+  assert.match(pkg.description, /Build [56]/);
+  assert.match(read("index.html"), /1\.0\.0 \((5|6)\)/);
+  assert.match(read("src/main.js"), /const BUILD = [56];/);
   const pbx = read("ios/App/App.xcodeproj/project.pbxproj");
   const values = [...new Set([...pbx.matchAll(/CURRENT_PROJECT_VERSION = (\d+);/g)].map((m) => m[1]))];
-  assert.deepEqual(values, ["5"]);
+  assert.deepEqual(values, ["6"]);
   assert.equal(values.length, 1);
 });
 
 test("版: 既存のテスト・E2E に Build 5 が組み込まれている", () => {
   const pkg = json("package.json");
   assert.match(pkg.scripts.test, /test\/build5\.test\.mjs/);
-  assert.match(pkg.scripts["test:e2e"], /^node tools\/e2e-build5\.mjs &&/);
+  assert.match(pkg.scripts["test:e2e"], /node tools\/e2e-build5\.mjs/);
   assert.ok(fs.existsSync(path.join(ROOT, "tools/e2e-build5.mjs")));
 });
 

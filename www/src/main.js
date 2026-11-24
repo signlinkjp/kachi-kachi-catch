@@ -52,7 +52,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const VERSION = "1.0.0";
-const BUILD = 5;
+const BUILD = 6;
 
 const app = {
   screen: "opening",
@@ -67,6 +67,72 @@ const app = {
   /** 直近のシェア（検証用）: { kind, text, via, at } */
   lastShare: null,
 };
+
+/* ---------------- 結果カードのゴーストタップ防止（Build 6） ----------------
+   iOS の WKWebView では、盤面を押していた指を離した瞬間の click が
+   「そのとき指の下にある要素」へ飛ぶ。失敗カードは 1手の 240ms 後に出すので、
+   盤面の下段を押したまま（あるいは素早く2回叩いて）カードが出ると、
+   その click がカードの「ステージをえらぶ」に当たり、
+   ゲーム終了とほぼ同時にステージ選択画面へ飛ばされていた。
+   対策は2段構え:
+     1) カードが出た瞬間から OVERLAY_ARM_MS のあいだ、カード内のボタンを
+        CSS（pointer-events: none）と JS の両方で受け付けない
+     2) カードが出る前に始まったタップ（＝終わりの1手）から出た click は、
+        いつ届いても捨てる（次に新しいタップが始まるまで有効）
+*/
+const OVERLAY_ARM_MS = 520;
+/** カードが出る前に始まったタップの click を待つ上限（これを過ぎたら普通の click として通す） */
+const GHOST_MAX_MS = 1200;
+/** 直近の pointerdown / touchstart の時刻（performance.now） */
+let lastDownAt = 0;
+/** この時刻より前に始まったタップの click は捨てる（0 = 解除） */
+let armFrom = 0;
+/** この時刻まではカードのボタンを受け付けない */
+let armUntil = 0;
+let armTimer = null;
+const nowMs = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
+
+/** 結果カードを出した直後に呼ぶ: 開幕の連打とゴーストクリックを止める */
+function armOverlayGuard() {
+  const now = nowMs();
+  armFrom = now;
+  armUntil = now + OVERLAY_ARM_MS;
+  const ov = $("#overlay");
+  if (ov) ov.classList.add("arming");
+  clearTimeout(armTimer);
+  armTimer = setTimeout(() => {
+    armUntil = 0;
+    const o = $("#overlay");
+    if (o) o.classList.remove("arming");
+  }, OVERLAY_ARM_MS);
+}
+
+/** カードを閉じる・画面を移るときにガードを解く */
+function clearOverlayGuard() {
+  clearTimeout(armTimer);
+  armTimer = null;
+  armFrom = 0;
+  armUntil = 0;
+  const ov = $("#overlay");
+  if (ov) ov.classList.remove("arming");
+}
+
+/**
+ * いま来た click は捨てるべきか（前のタップの click / カード開幕の連打）。
+ * 指から出た click（isTrusted）だけが対象。スクリプトや支援技術の click は通す。
+ */
+function isGhostClick(e) {
+  if (e && e.isTrusted === false) return false;
+  const now = nowMs();
+  if (!armFrom) return false;
+  // 取り残されないよう期限を切る（前のタップの click は 1 秒以上遅れて来ない）
+  if (now - armFrom > GHOST_MAX_MS) {
+    armFrom = 0;
+    return false;
+  }
+  if (lastDownAt <= armFrom) return true; // カードが出る前から始まっていたタップ
+  return now < armUntil; // カード開幕直後（カードの登場アニメのあいだ）の連打
+}
 
 /* ---------------- 操作ロックの安全装置 ----------------
    Build 3 では「タップを待たせるロック」そのものを廃止した。
@@ -91,6 +157,7 @@ function resetInteraction() {
   // クリア/失敗カード（透明になった全画面の受け皿）も必ず畳む
   const ov = $("#overlay");
   if (ov) ov.classList.remove("show");
+  clearOverlayGuard();
   handledPointer = null;
   $$(".cell.preview, .cell.hint, #board .cell.flip, #board .cell.netted").forEach((c) =>
     c.classList.remove("preview", "hint", "flip", "netted")
@@ -190,6 +257,7 @@ function applyI18n(root = document) {
 function closeOverlays() {
   const ov = $("#overlay");
   if (ov) ov.classList.remove("show");
+  clearOverlayGuard();
   closeAllSheets();
   const toast = $("#toast");
   if (toast) toast.classList.remove("show");
@@ -1053,7 +1121,14 @@ function cardButton(label, sub, cls, onClick) {
   const b = document.createElement("button");
   b.className = "btn" + (cls ? " " + cls : "");
   b.innerHTML = sub ? `<span class="btn-main">${label}</span><span class="btn-sub">${sub}</span>` : `<span class="btn-main">${label}</span>`;
-  b.addEventListener("click", onClick);
+  // Build 6: カードが出た瞬間のゴーストタップでは何も起きない（二重の保険）
+  b.addEventListener("click", (e) => {
+    if (isGhostClick(e)) {
+      e.preventDefault();
+      return;
+    }
+    onClick(e);
+  });
   return b;
 }
 
@@ -1102,6 +1177,7 @@ function showClear(game, isNew) {
   actions.appendChild(cardButton(t("game.again"), "", "ghost", () => openStage(stage.id, { mode: s.mode, dailyKey: s.dailyKey })));
   actions.appendChild(cardButton(t("game.choose"), "", "ghost", () => nav(s.mode === "daily" ? "daily" : "select")));
   $("#overlay").classList.add("show");
+  armOverlayGuard();
 }
 
 function showFail(game) {
@@ -1119,6 +1195,7 @@ function showFail(game) {
   }));
   actions.appendChild(cardButton(t("game.choose"), "", "ghost", () => nav(s.mode === "daily" ? "daily" : "select")));
   $("#overlay").classList.add("show");
+  armOverlayGuard();
 }
 
 /* ---------------- タイムアタック ---------------- */
@@ -1301,6 +1378,7 @@ function endTimeAttack() {
     nav("title");
   }));
   $("#overlay").classList.add("show");
+  armOverlayGuard();
 }
 
 function stopTimeAttack() {
@@ -1547,8 +1625,8 @@ function startOpening() {
   $("#open-tag").textContent = app.t("app.tagline");
   $("#open-skip").textContent = app.t("opening.skip");
   clearTimeout(openingTimer);
-  // Build 5: 追いかけアニメは 1.6 秒。全体は 1.75 秒でホームへ（タップで即スキップ）
-  openingTimer = setTimeout(finishOpening, 1750);
+  // Build 6: 全身キャラが走り抜ける 1.5 秒＋タイトル。全体は 2.1 秒でホームへ（タップで即スキップ）
+  openingTimer = setTimeout(finishOpening, 2100);
 }
 function finishOpening() {
   clearTimeout(openingTimer);
@@ -1561,6 +1639,29 @@ function finishOpening() {
 }
 
 function bind() {
+  // Build 6: タップの起点を記録し、カード開幕のゴースト click を捨てる（capture で最優先）。
+  // カードが出たあとに始まった「新しいタップ」なら、開幕ガードはその場で解く
+  // （カードの登場アニメ中でも、本人が押しにいった操作は待たせない）。
+  const markDown = (e) => {
+    lastDownAt = e && e.timeStamp ? e.timeStamp : nowMs();
+    if (armFrom && lastDownAt > armFrom && armUntil) {
+      armUntil = 0;
+      const ov = $("#overlay");
+      if (ov) ov.classList.remove("arming");
+    }
+  };
+  document.addEventListener("pointerdown", markDown, true);
+  document.addEventListener("touchstart", markDown, { capture: true, passive: true });
+  document.addEventListener(
+    "click",
+    (e) => {
+      if (!isGhostClick(e)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    },
+    true
+  );
+
   // opening
   $("#screen-opening").addEventListener("pointerdown", () => {
     unlockAudio();

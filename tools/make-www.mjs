@@ -10,6 +10,8 @@ const ASSETS = [
   "tanuki_token.png",
   "rabbit_face.png",
   "tanuki_face.png",
+  "rabbit_run.png",
+  "tanuki_run.png",
   "kachi-appicon-1024.png",
 ];
 

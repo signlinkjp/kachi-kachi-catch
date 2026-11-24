@@ -220,14 +220,14 @@ test("ホーム: 🌐日本語チップを廃止し、設定を普通のボタ�
   assert.match(util, /color: var\(--verm-dark\)/);
 });
 
-test("版: Build 5（package.json / index.html / main.js / iOS）", () => {
+test("版: 1.0.0 系のままビルド番号が上がっている（package.json / index.html / main.js / iOS が一致）", () => {
   const pkg = json("package.json");
   assert.equal(pkg.version, "1.0.0");
-  assert.equal(pkg.build, 5);
-  assert.match(pkg.description, /Build 5/);
-  assert.match(read("index.html"), /1\.0\.0 \(5\)/);
-  assert.match(read("src/main.js"), /const BUILD = 5;/);
+  assert.ok(Number.isInteger(pkg.build) && pkg.build >= 5);
+  assert.match(pkg.description, /Build \d/);
+  assert.match(read("index.html"), new RegExp(`1\\.0\\.0 \\(${pkg.build}\\)`));
+  assert.match(read("src/main.js"), new RegExp(`const BUILD = ${pkg.build};`));
   const pbx = read("ios/App/App.xcodeproj/project.pbxproj");
   const values = [...new Set([...pbx.matchAll(/CURRENT_PROJECT_VERSION = (\d+);/g)].map((m) => m[1]))];
-  assert.deepEqual(values, ["5"]);
+  assert.deepEqual(values, [String(pkg.build)]);
 });

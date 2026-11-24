@@ -102,141 +102,121 @@ button { font-family: inherit; }
 }
 .open-inner { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 
-/* ---- Build 5: 追いかけオープニング ----
-   ポコ丸が慌てて右から左へ逃げ、臼の杵を持ったウサギローがトテトテ追いかけて、
-   最後はホーム画面と同じ2人の位置へ着地する。
-   動かすのは transform と opacity だけ（GPU 合成）。タップは下の .screen が受け、
-   この層は pointer-events: none。オープニングを離れたら .playing が外れて完全に消える。 */
+/* ---- Build 6: 全身キャラの追いかけオープニング ----
+   丸アイコンをやめて、臼の杵を持ったウサギローと逃げるポコ丸の「全身」が
+   足を動かして走り抜ける。走りは assets/tanuki_run.png / rabbit_run.png の
+   4コマ（steps(1, end) でコマ送り）＋位置と弾みは transform だけ。
+   背景は透過 PNG なので枠も四角い下地も出ない。
+   GPU 合成だけで動かすため iOS の WKWebView でも軽い。 */
 .open-chase {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  --run-x: min(78vw, 350px);
 }
 #screen-opening:not(.playing) .open-chase { opacity: 0; }
 .chase-runner {
+  /* 1コマの幅。走る距離もこの値から作る（% の入れ子を作らない） */
+  --fw: min(52vw, 212px);
+  --fh: 284;
   position: absolute;
-  top: -30px;
-  width: 38vw;
-  max-width: 170px;
+  left: 50%;
+  top: 27%;
+  width: var(--fw);
+  margin-left: calc(var(--fw) / -2);
   display: block;
   opacity: 0;
   pointer-events: none;
   will-change: transform, opacity;
 }
-.chase-tanuki { left: calc(100% - min(38vw, 170px) + 30px); }
-.chase-usagiro { left: -30px; }
-.open-rabbit, .open-tanuki {
+.chase-usagiro { --fh: 270.5; }
+/* 4コマのスプライト（横一列）を1コマ分の枠で切り出してコマ送りする。
+   コマの大きさは px（calc）で決め打ちし、背景の位置だけで動かす。 */
+.run-body {
   display: block;
   width: 100%;
-  border-radius: 50%;
-  filter: drop-shadow(0 10px 14px rgba(110, 60, 20, .25));
+  height: calc(var(--fw) * 300 / var(--fh));
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  background-size: calc(var(--fw) * 4) calc(var(--fw) * 300 / var(--fh));
+  filter: drop-shadow(0 8px 10px rgba(110, 60, 20, .2));
 }
-#screen-opening.playing .chase-tanuki { animation: chaseTanuki 1.6s cubic-bezier(.3, .7, .3, 1) both; }
-#screen-opening.playing .chase-usagiro { animation: chaseUsagiro 1.6s cubic-bezier(.3, .7, .3, 1) both; }
+.chase-tanuki .run-body { background-image: url(assets/tanuki_run.png); }
+.chase-usagiro .run-body { background-image: url(assets/rabbit_run.png); }
+#screen-opening.playing .run-body { animation: runCycle .36s steps(1, end) infinite; }
+#screen-opening.playing .chase-tanuki .run-body { animation-duration: .4s; }
+@keyframes runCycle {
+  0% { background-position: 0 0; }
+  25% { background-position: calc(var(--fw) * -1) 0; }
+  50% { background-position: calc(var(--fw) * -2) 0; }
+  75%, 100% { background-position: calc(var(--fw) * -3) 0; }
+}
+/* 走る位置: 右から入って左へ抜ける。上下の弾みで足の動きに合わせた軽さを出す */
+#screen-opening.playing .chase-tanuki { animation: chaseTanuki 1.5s linear both; }
+#screen-opening.playing .chase-usagiro { animation: chaseUsagiro 1.5s linear both; }
 @keyframes chaseTanuki {
-  0% { transform: translate3d(520px, 12px, 0) scaleX(-1) rotate(-6deg); opacity: 0; }
-  10% { transform: translate3d(380px, 2px, 0) scaleX(-1) rotate(5deg); opacity: 1; }
-  34% { transform: translate3d(-215px, -12px, 0) scaleX(-1) rotate(6deg); opacity: 1; }
-  44% { transform: translate3d(-215px, 0, 0) scaleX(-1) rotate(-4deg); opacity: 1; }
-  48% { transform: translate3d(-212px, -6px, 0) scaleX(1) rotate(4deg); opacity: 1; }
-  70% { transform: translate3d(-40px, -8px, 0) scaleX(1) rotate(-3deg); opacity: 1; }
-  80% { transform: translate3d(0, 2px, 0) scale(1.08, .92); opacity: 1; }
-  90% { transform: translate3d(0, -3px, 0) scale(.98, 1.02); opacity: 1; }
-  100% { transform: translate3d(0, 0, 0); opacity: 1; }
+  0% { transform: translate3d(330px, 8px, 0); opacity: 0; }
+  7% { transform: translate3d(280px, -6px, 0); opacity: 1; }
+  18% { transform: translate3d(190px, 3px, 0); }
+  30% { transform: translate3d(80px, -9px, 0); }
+  42% { transform: translate3d(-30px, 3px, 0); }
+  54% { transform: translate3d(-140px, -9px, 0); }
+  66% { transform: translate3d(-230px, 3px, 0); }
+  78% { transform: translate3d(-300px, -8px, 0); }
+  88% { transform: translate3d(-360px, 2px, 0); opacity: 1; }
+  100% { transform: translate3d(-430px, 0, 0); opacity: 0; }
 }
 @keyframes chaseUsagiro {
-  0% { transform: translate3d(560px, 14px, 0) rotate(-4deg); opacity: 0; }
-  10% { opacity: 1; }
-  36% { transform: translate3d(230px, -14px, 0) rotate(4deg); opacity: 1; }
-  52% { transform: translate3d(40px, -6px, 0) rotate(-4deg); opacity: 1; }
-  64% { transform: translate3d(0, -12px, 0) rotate(2deg); opacity: 1; }
-  72% { transform: translate3d(0, 2px, 0) scale(1.06, .94); opacity: 1; }
-  80% { transform: translate3d(0, -4px, 0) scale(.99, 1.01); opacity: 1; }
-  100% { transform: translate3d(0, 0, 0); opacity: 1; }
+  0% { transform: translate3d(470px, 6px, 0); opacity: 0; }
+  8% { transform: translate3d(400px, -6px, 0); opacity: 1; }
+  20% { transform: translate3d(290px, 4px, 0); }
+  32% { transform: translate3d(170px, -10px, 0); }
+  44% { transform: translate3d(50px, 3px, 0); }
+  56% { transform: translate3d(-70px, -10px, 0); }
+  68% { transform: translate3d(-170px, 3px, 0); }
+  80% { transform: translate3d(-250px, -8px, 0); }
+  90% { transform: translate3d(-320px, 2px, 0); opacity: 1; }
+  100% { transform: translate3d(-380px, 0, 0); opacity: 0; }
 }
-/* 臼の杵（木製の杵）: ウサギローが小刻みに振り上げる。
-   丸いトークンの左下から右上へ伸ばし、先に杵の頭を付けて「持っている」形にする。 */
-.chase-mallet {
+/* 走り去ったあとの土煙（transform と opacity だけ） */
+.chase-dust {
   position: absolute;
-  left: 3%;
-  top: 12%;
-  width: 12%;
-  height: 58%;
-  border-radius: 999px;
-  background: linear-gradient(160deg, #f2c685 0%, #d59a55 55%, #a86b33 100%);
-  border: 2px solid #8a5a2e;
-  box-shadow: 0 3px 6px rgba(90, 50, 20, .28);
-  transform-origin: 50% 96%;
-  transform: rotate(30deg);
+  right: 2%;
+  bottom: 2%;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #fff6e2;
   opacity: 0;
   pointer-events: none;
 }
-.chase-mallet::after {
-  content: "";
-  position: absolute;
-  left: -85%;
-  top: -6%;
-  width: 270%;
-  height: 26%;
-  border-radius: 8px;
-  background: linear-gradient(180deg, #f6d3a0, #b8763a);
-  border: 2px solid #8a5a2e;
-  box-shadow: inset 0 2px 0 rgba(255, 245, 225, .5);
+.chase-dust.d2 { right: -6%; bottom: 0; width: 11px; height: 11px; }
+.chase-dust.d3 { right: 12%; bottom: -2px; width: 8px; height: 8px; }
+.chase-usagiro .chase-dust { right: auto; left: 74%; }
+#screen-opening.playing .chase-dust { animation: dustPuff .5s ease-out infinite; }
+#screen-opening.playing .chase-dust.d2 { animation-delay: .17s; }
+#screen-opening.playing .chase-dust.d3 { animation-delay: .33s; }
+@keyframes dustPuff {
+  0% { transform: translate3d(0, 0, 0) scale(.5); opacity: .8; }
+  100% { transform: translate3d(16px, -8px, 0) scale(1.6); opacity: 0; }
 }
-#screen-opening.playing .chase-mallet { animation: malletBob .36s ease-in-out infinite; }
-@keyframes malletBob {
-  0%, 100% { transform: rotate(16deg) translate3d(0, 0, 0); opacity: 1; }
-  50% { transform: rotate(44deg) translate3d(0, -6px, 0); opacity: 1; }
-}
-.chase-sweat {
-  position: absolute;
-  right: 4%;
-  top: -4%;
-  font-size: 15px;
-  font-style: normal;
-  opacity: 0;
-}
-#screen-opening.playing .chase-sweat { animation: sweatPop .55s ease-in-out infinite; }
-@keyframes sweatPop {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(.85); opacity: .45; }
-  50% { transform: translate3d(0, -6px, 0) scale(1); opacity: 1; }
-}
-.chase-dust {
-  position: absolute;
-  bottom: 0;
-  left: 12%;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #fff7e6;
-  opacity: 0;
-}
-/* 走っている速さを伝える横のスピード線（transform と opacity だけ） */
+/* 走っている速さを伝える横のスピード線 */
 .chase-speed {
   position: absolute;
-  right: -26%;
-  top: 40%;
-  width: 30%;
+  right: -8%;
+  top: 44%;
+  width: 26%;
   height: 4px;
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(226, 87, 46, .5), rgba(226, 87, 46, 0));
   opacity: 0;
   pointer-events: none;
 }
-.chase-speed.s2 { top: 58%; right: -18%; width: 20%; height: 3px; }
+.chase-speed.s2 { top: 62%; right: -2%; width: 17%; height: 3px; }
 #screen-opening.playing .chase-speed { animation: speedFlick .32s ease-in-out infinite; }
 #screen-opening.playing .chase-speed.s2 { animation-delay: .16s; }
 @keyframes speedFlick {
   0%, 100% { transform: translate3d(0, 0, 0); opacity: .15; }
-  50% { transform: translate3d(7px, 0, 0); opacity: .8; }
-}
-.chase-dust.d2 { left: 46%; width: 10px; height: 10px; }
-#screen-opening.playing .chase-dust { animation: dustPuff .5s ease-out infinite; }
-#screen-opening.playing .chase-dust.d2 { animation-delay: .25s; }
-@keyframes dustPuff {
-  0% { transform: translate3d(0, 0, 0) scale(.5); opacity: .85; }
-  100% { transform: translate3d(-18px, -10px, 0) scale(1.5); opacity: 0; }
+  50% { transform: translate3d(8px, 0, 0); opacity: .8; }
 }
 .open-title {
   margin: 96px 0 0;
@@ -246,10 +226,11 @@ button { font-family: inherit; }
   color: var(--verm-dark);
   text-shadow: 0 2px 0 #ffe6c8, 0 6px 14px rgba(150, 70, 20, .18);
   text-align: center;
-  animation: openTitle .9s .35s both;
+  /* Build 6: 2人が走り抜けたあとにタイトルがポンと出る */
+  animation: openTitle .6s 1.12s both;
 }
-@keyframes openTitle { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.open-tag { margin: 0; color: var(--verm); font-weight: 800; letter-spacing: .3em; font-size: 11px; }
+@keyframes openTitle { from { opacity: 0; transform: translateY(10px) scale(.94); } to { opacity: 1; transform: none; } }
+.open-tag { margin: 0; color: var(--verm); font-weight: 800; letter-spacing: .3em; font-size: 11px; animation: openTitle .5s 1.26s both; }
 .open-skip {
   position: absolute;
   bottom: calc(env(safe-area-inset-bottom, 0px) + 34px);
@@ -891,6 +872,10 @@ button { font-family: inherit; }
   z-index: 20;
 }
 .overlay.show { opacity: 1; pointer-events: auto; }
+/* Build 6: カードが出た瞬間のゴーストタップ・連打をボタンに当てない
+   （iOS で盤面を押した指を離した click が、出たばかりの「ステージをえらぶ」に
+     当たってステージ選択へ飛ぶ不具合の CSS 側のガード。JS 側でも捨てている） */
+.overlay.arming .card-actions { pointer-events: none; }
 .card {
   width: 100%;
   max-width: 360px;
