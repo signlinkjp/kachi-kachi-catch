@@ -1,0 +1,65 @@
+{
+  "comment": "Kachi Kachi Catch のボイス台本。tools/gen_voices.py が edge-tts で assets/voices/{lang}/ に mp3 を作る。",
+  "voices": {
+    "ja": {
+      "usagiro": { "voice": "ja-JP-KeitaNeural", "pitch": "+12Hz", "rate": "+10%" },
+      "pokomaru": { "voice": "ja-JP-NanamiNeural", "pitch": "+22Hz", "rate": "+8%" }
+    },
+    "en": {
+      "usagiro": { "voice": "en-US-BrianNeural", "pitch": "+12Hz", "rate": "+10%" },
+      "pokomaru": { "voice": "en-US-AnaNeural", "pitch": "+8Hz", "rate": "+6%" }
+    }
+  },
+  "lines": {
+    "ja": {
+      "usagiro": {
+        "start1": "いくぞー！",
+        "start2": "逃がさないぞ！",
+        "tap1": "そこだ！",
+        "tap2": "これでどうだ！",
+        "clear1": "つかまえた！",
+        "clear2": "やったね！",
+        "fail1": "逃げられたー！",
+        "fail2": "もう一回だ！"
+      },
+      "pokomaru": {
+        "taunt0": "つかまえてみなよー！",
+        "taunt1": "へへん、まだまだー！",
+        "taunt2": "そんな網じゃ捕まらないよ！",
+        "taunt3": "ここは安全地帯さ！",
+        "panic1": "おっとあぶない！",
+        "panic2": "うわっ、せまい！",
+        "panic3": "なんでそこに罠が！",
+        "caught1": "やられたー！",
+        "caught2": "まいりましたー！",
+        "escape1": "バイバーイ！",
+        "escape2": "逃げ切ったぞー！"
+      }
+    },
+    "en": {
+      "usagiro": {
+        "start1": "Here we go!",
+        "start2": "You're not getting away!",
+        "tap1": "There you are!",
+        "tap2": "How about this!",
+        "clear1": "Caught you!",
+        "clear2": "We did it!",
+        "fail1": "He got away!",
+        "fail2": "One more time!"
+      },
+      "pokomaru": {
+        "taunt0": "Try and catch me!",
+        "taunt1": "Heh, still not even close!",
+        "taunt2": "That net won't catch me!",
+        "taunt3": "This is my safe spot!",
+        "panic1": "Whoa, that was close!",
+        "panic2": "Yikes, it's getting cramped!",
+        "panic3": "Why is there a trap there!",
+        "caught1": "You got me!",
+        "caught2": "I surrender!",
+        "escape1": "Bye-bye!",
+        "escape2": "I got away!"
+      }
+    }
+  }
+}

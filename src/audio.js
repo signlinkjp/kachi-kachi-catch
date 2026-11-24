@@ -1,91 +1,249 @@
-/** WebAudio の効果音とBGM（すべて合成・外部ファイルなし） */
+/**
+ * WebAudio の効果音・BGM・ボイス。
+ *
+ * iOS の WKWebView はホーム画面へ行って戻ると AudioContext が
+ * suspended / interrupted のままになり、そのままでは音が戻らない。
+ * そのため
+ *   - 復帰（visibilitychange / pageshow / focus / appStateChange）で必ず起こし直す
+ *   - 次のタップでも state が running でなければ起こし直す
+ *   - それでも戻らない（interrupted など）ときは AudioContext を作り直す
+ * という3段構えにしている。効果音・ボイスは絶対に例外を投げない
+ * （音が出ないだけで、ゲームの操作が止まってはいけない）。
+ */
 import { store } from "./storage.js";
 
 let ctx = null;
 let master = null;
 let bgmGain = null;
 let sfxGain = null;
+let voiceGain = null;
 let bgmTimer = null;
 let step = 0;
 let nextTime = 0;
 let bgmOn = false;
+let generation = 0;
+let building = false;
+// 一度でも「鳴っている」状態になったことがあるか。
+// まだのとき（オートプレイ制限で suspended のまま）は作り直さず、最初のタップを待つ。
+let everRan = false;
+let lastRecoverAt = 0;
 
-function ensure() {
-  if (!ctx) {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return null;
+let voiceNode = null;
+let voiceToken = 0;
+let voiceStarts = 0;
+let voiceStops = 0;
+let lastVoice = null;
+const clipCache = new Map(); // `${generation}|${url}` -> AudioBuffer
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* ---------------- 状態 ---------------- */
+
+/** テスト用の差し込み（iOS の interrupted を再現する）。通常は null。 */
+function forcedState() {
+  if (typeof window === "undefined") return null;
+  return window.__kachiAudioForceState || null;
+}
+
+/** いまの AudioContext の状態（テストの差し込みがあればそちら） */
+export function audioState() {
+  const forced = forcedState();
+  if (forced) return forced;
+  return ctx ? ctx.state : "none";
+}
+
+export function audioDebug() {
+  return {
+    state: audioState(),
+    generation,
+    bgm: bgmOn && !!bgmTimer,
+    voice: !!voiceNode,
+    voiceStarts,
+    voiceStops,
+    lastVoice,
+    clips: clipCache.size,
+  };
+}
+
+function gainFor(name) {
+  if (name === "bgm") return store.settings.bgm === false ? 0 : 0.3;
+  if (name === "voice") return store.settings.voice === false ? 0 : 0.95;
+  return store.settings.se === false ? 0 : 0.42;
+}
+
+/** AudioContext を作る（作り直しにも使う） */
+function build() {
+  const AC = typeof window !== "undefined" && (window.AudioContext || window.webkitAudioContext);
+  if (!AC) return null;
+  building = true;
+  try {
+    if (ctx) {
+      try {
+        ctx.close();
+      } catch {}
+    }
     ctx = new AC();
+    generation += 1;
+    clipCache.clear();
+    voiceNode = null;
+    // テスト用の差し込みは「新しい AudioContext を作った」時点で解除する
+    if (typeof window !== "undefined" && window.__kachiAudioForceState) {
+      try {
+        window.__kachiAudioForceState = null;
+      } catch {}
+    }
     master = ctx.createGain();
     master.gain.value = 0.9;
     master.connect(ctx.destination);
     sfxGain = ctx.createGain();
-    sfxGain.gain.value = store.settings.se === false ? 0 : 0.42;
+    sfxGain.gain.value = gainFor("se");
     sfxGain.connect(master);
     bgmGain = ctx.createGain();
-    bgmGain.gain.value = store.settings.bgm === false ? 0 : 0.3;
+    bgmGain.gain.value = gainFor("bgm");
     bgmGain.connect(master);
+    voiceGain = ctx.createGain();
+    voiceGain.gain.value = gainFor("voice");
+    voiceGain.connect(master);
+    ctx.onstatechange = () => {
+      if (ctx && ctx.state === "running") everRan = true;
+    };
+    return ctx;
+  } catch {
+    ctx = null;
+    return null;
+  } finally {
+    building = false;
   }
-  if (ctx.state === "suspended") ctx.resume();
+}
+
+/** 使える AudioContext を返す（無ければ作り、止まっていれば起こす） */
+function ensure() {
+  if (building) return ctx;
+  if (!ctx || audioState() === "closed") build();
+  if (!ctx) return null;
+  if (audioState() !== "running" && !forcedState()) nudge();
   return ctx;
 }
 
+/** resume を投げるだけ投げる（結果は待たない） */
+function nudge() {
+  if (!ctx) return;
+  try {
+    const p = ctx.resume();
+    if (p && typeof p.catch === "function") p.catch(() => {});
+  } catch {}
+}
+
+/**
+ * 音を必ず戻す。suspended なら resume、それで戻らなければ作り直す。
+ * @returns {Promise<boolean>} 鳴らせる状態になったか
+ */
+export async function recoverAudio() {
+  const now = Date.now();
+  if (now - lastRecoverAt < 250 && !forcedState()) return audioState() === "running";
+  lastRecoverAt = now;
+  if (!ctx) {
+    if (!build()) return false;
+  }
+  if (audioState() === "running") {
+    everRan = true;
+    restartBgmIfNeeded();
+    return true;
+  }
+  if (!forcedState()) {
+    try {
+      await Promise.race([Promise.resolve(ctx.resume()), wait(260)]);
+    } catch {}
+    if (audioState() === "running") {
+      everRan = true;
+      restartBgmIfNeeded();
+      return true;
+    }
+  }
+  // まだ一度も鳴っていない（最初のタップ前）なら、作り直しても鳴らないので待つ
+  if (!everRan && !forcedState()) return false;
+  // resume では戻らない（iOS の interrupted / closed）→ 作り直す
+  const wasBgm = bgmOn || store.settings.bgm !== false;
+  stopBgmTimer();
+  if (!build()) return false;
+  if (wasBgm) {
+    bgmOn = true;
+    startBgmTimer();
+  }
+  try {
+    await Promise.race([Promise.resolve(ctx.resume()), wait(260)]);
+  } catch {}
+  if (audioState() === "running") everRan = true;
+  return audioState() === "running";
+}
+
 export function unlockAudio() {
-  ensure();
+  if (!ctx) build();
+  else if (audioState() !== "running") recoverAudio();
   // iOS は操作のたびに AudioSession を起こし直すと安定する（AppDelegate 側）
   const cap = window.Capacitor;
   if (cap && cap.Plugins && cap.Plugins.KachiAudio) {
     try {
-      cap.Plugins.KachiAudio.activate();
+      const r = cap.Plugins.KachiAudio.activate();
+      if (r && typeof r.catch === "function") r.catch(() => {});
     } catch {}
   }
 }
 
 export function applySettings() {
   const s = store.settings;
-  if (sfxGain) sfxGain.gain.value = s.se === false ? 0 : 0.42;
-  if (bgmGain) bgmGain.gain.value = s.bgm === false ? 0 : 0.3;
+  if (sfxGain) sfxGain.gain.value = gainFor("se");
+  if (bgmGain) bgmGain.gain.value = gainFor("bgm");
+  if (voiceGain) voiceGain.gain.value = gainFor("voice");
   if (s.bgm === false) stopBgm();
-  else if (s.bgm === true && bgmOn) startBgm();
+  else if (!bgmTimer) startBgm();
+  if (s.voice === false) stopVoice();
 }
 
+/* ---------------- 効果音 ---------------- */
+
 function tone({ freq = 440, type = "sine", dur = 0.12, gain = 0.25, delay = 0, slide = null, attack = 0.005, bus = null }) {
-  const c = ensure();
-  if (!c) return;
-  const t0 = c.currentTime + delay;
-  const osc = c.createOscillator();
-  const g = c.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, t0);
-  if (slide != null) osc.frequency.exponentialRampToValueAtTime(Math.max(30, slide), t0 + dur);
-  g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(gain, t0 + attack);
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  osc.connect(g);
-  g.connect(bus || sfxGain);
-  osc.start(t0);
-  osc.stop(t0 + dur + 0.02);
+  try {
+    const c = ensure();
+    if (!c) return;
+    const t0 = c.currentTime + delay;
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    if (slide != null) osc.frequency.exponentialRampToValueAtTime(Math.max(30, slide), t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.001, gain), t0 + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g);
+    g.connect(bus || sfxGain || master);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+  } catch {}
 }
 
 function noise({ dur = 0.18, gain = 0.18, delay = 0, filter = 1200, bus = null }) {
-  const c = ensure();
-  if (!c) return;
-  const t0 = c.currentTime + delay;
-  const len = Math.floor(c.sampleRate * dur);
-  const buf = c.createBuffer(1, len, c.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
-  const src = c.createBufferSource();
-  src.buffer = buf;
-  const bp = c.createBiquadFilter();
-  bp.type = "bandpass";
-  bp.frequency.value = filter;
-  bp.Q.value = 0.8;
-  const g = c.createGain();
-  g.gain.value = gain;
-  src.connect(bp);
-  bp.connect(g);
-  g.connect(bus || sfxGain);
-  src.start(t0);
+  try {
+    const c = ensure();
+    if (!c) return;
+    const t0 = c.currentTime + delay;
+    const len = Math.floor(c.sampleRate * dur);
+    const buf = c.createBuffer(1, len, c.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    const bp = c.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = filter;
+    bp.Q.value = 0.8;
+    const g = c.createGain();
+    g.gain.value = gain;
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(bus || sfxGain || master);
+    src.start(t0);
+  } catch {}
 }
 
 export const sfx = {
@@ -140,6 +298,62 @@ export const sfx = {
   },
 };
 
+/* ---------------- ボイス ---------------- */
+
+/** 鳴っているボイスを止める（連打しても重ならない） */
+export function stopVoice() {
+  voiceToken += 1;
+  if (!voiceNode) return;
+  voiceStops += 1;
+  try {
+    voiceNode.stop(0);
+  } catch {}
+  voiceNode = null;
+}
+
+/**
+ * ボイスを1本鳴らす。前のボイスは止めてから鳴らす。
+ * @returns {Promise<boolean>} 鳴らせたか（音が出せなくても例外は投げない）
+ */
+export async function playClip(url) {
+  if (!url) return false;
+  if (store.settings.voice === false) return false;
+  try {
+    if (!ctx) build();
+    if (!ctx) return false;
+    if (audioState() !== "running") await recoverAudio();
+    const c = ctx;
+    if (!c) return false;
+    if (audioState() !== "running") return false;
+    const id = generation + "|" + url;
+    let buffer = clipCache.get(id);
+    if (!buffer) {
+      const res = await fetch(url, { cache: "force-cache" });
+      if (!res.ok) return false;
+      const arr = await res.arrayBuffer();
+      buffer = await c.decodeAudioData(arr);
+      if (!buffer) return false;
+      clipCache.set(id, buffer);
+    }
+    if (store.settings.voice === false) return false;
+    stopVoice();
+    const token = voiceToken;
+    const src = c.createBufferSource();
+    src.buffer = buffer;
+    src.connect(voiceGain || master);
+    src.onended = () => {
+      if (token === voiceToken) voiceNode = null;
+    };
+    voiceNode = src;
+    voiceStarts += 1;
+    lastVoice = url;
+    src.start(0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /* ---------------- BGM ---------------- */
 const N = {
   D3: 146.83,
@@ -173,95 +387,118 @@ const STEP = 60 / BPM / 2;
 function playStep(i, time) {
   const c = ctx;
   if (!c) return;
-  const mel = MELODY[i];
-  if (mel) {
-    const osc = c.createOscillator();
-    const g = c.createGain();
-    osc.type = "triangle";
-    osc.frequency.setValueAtTime(mel, time);
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(0.16, time + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.26);
-    osc.connect(g);
-    g.connect(bgmGain);
-    osc.start(time);
-    osc.stop(time + 0.3);
-    // きらっと1オクターブ上を薄く
-    if (i % 8 === 0) {
-      const o2 = c.createOscillator();
-      const g2 = c.createGain();
-      o2.type = "sine";
-      o2.frequency.setValueAtTime(mel * 2, time);
-      g2.gain.setValueAtTime(0.0001, time);
-      g2.gain.exponentialRampToValueAtTime(0.04, time + 0.01);
-      g2.gain.exponentialRampToValueAtTime(0.0001, time + 0.4);
-      o2.connect(g2);
-      g2.connect(bgmGain);
-      o2.start(time);
-      o2.stop(time + 0.45);
+  const bus = bgmGain || master;
+  try {
+    const mel = MELODY[i];
+    if (mel) {
+      const osc = c.createOscillator();
+      const g = c.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(mel, time);
+      g.gain.setValueAtTime(0.0001, time);
+      g.gain.exponentialRampToValueAtTime(0.16, time + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, time + 0.26);
+      osc.connect(g);
+      g.connect(bus);
+      osc.start(time);
+      osc.stop(time + 0.3);
+      // きらっと1オクターブ上を薄く
+      if (i % 8 === 0) {
+        const o2 = c.createOscillator();
+        const g2 = c.createGain();
+        o2.type = "sine";
+        o2.frequency.setValueAtTime(mel * 2, time);
+        g2.gain.setValueAtTime(0.0001, time);
+        g2.gain.exponentialRampToValueAtTime(0.04, time + 0.01);
+        g2.gain.exponentialRampToValueAtTime(0.0001, time + 0.4);
+        o2.connect(g2);
+        g2.connect(bus);
+        o2.start(time);
+        o2.stop(time + 0.45);
+      }
     }
-  }
-  if (i % 8 === 0) {
-    const root = BASS[(i / 8) % BASS.length];
-    const osc = c.createOscillator();
-    const g = c.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(root, time);
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(0.18, time + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.5);
-    osc.connect(g);
-    g.connect(bgmGain);
-    osc.start(time);
-    osc.stop(time + 0.55);
-  }
-  if (i % 8 === 4) {
-    // 太鼓（やわらかい低音）
-    const osc = c.createOscillator();
-    const g = c.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(120, time);
-    osc.frequency.exponentialRampToValueAtTime(70, time + 0.12);
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(0.12, time + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.18);
-    osc.connect(g);
-    g.connect(bgmGain);
-    osc.start(time);
-    osc.stop(time + 0.2);
-  }
-  if (i % 2 === 1) {
-    noise({ dur: 0.04, gain: 0.02, filter: 5200, bus: bgmGain });
-  }
+    if (i % 8 === 0) {
+      const root = BASS[(i / 8) % BASS.length];
+      const osc = c.createOscillator();
+      const g = c.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(root, time);
+      g.gain.setValueAtTime(0.0001, time);
+      g.gain.exponentialRampToValueAtTime(0.18, time + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, time + 0.5);
+      osc.connect(g);
+      g.connect(bus);
+      osc.start(time);
+      osc.stop(time + 0.55);
+    }
+    if (i % 8 === 4) {
+      // 太鼓（やわらかい低音）
+      const osc = c.createOscillator();
+      const g = c.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(120, time);
+      osc.frequency.exponentialRampToValueAtTime(70, time + 0.12);
+      g.gain.setValueAtTime(0.0001, time);
+      g.gain.exponentialRampToValueAtTime(0.12, time + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, time + 0.18);
+      osc.connect(g);
+      g.connect(bus);
+      osc.start(time);
+      osc.stop(time + 0.2);
+    }
+    if (i % 2 === 1) {
+      noise({ dur: 0.04, gain: 0.02, filter: 5200, bus });
+    }
+  } catch {}
 }
 
 function schedule() {
   const c = ctx;
   if (!c || !bgmOn) return;
-  while (nextTime < c.currentTime + 0.25) {
-    playStep(step, nextTime);
-    step = (step + 1) % 64;
-    nextTime += STEP;
+  try {
+    if (c.state !== "running") return;
+    while (nextTime < c.currentTime + 0.25) {
+      playStep(step, nextTime);
+      step = (step + 1) % 64;
+      nextTime += STEP;
+    }
+  } catch {}
+}
+
+function startBgmTimer() {
+  if (!ctx || bgmTimer) return;
+  nextTime = ctx.currentTime + 0.05;
+  bgmTimer = setInterval(schedule, 90);
+  schedule();
+}
+
+function stopBgmTimer() {
+  if (bgmTimer) {
+    clearInterval(bgmTimer);
+    bgmTimer = null;
   }
+}
+
+function restartBgmIfNeeded() {
+  if (!bgmOn) return;
+  if (store.settings.bgm === false) return;
+  if (!bgmTimer) startBgmTimer();
 }
 
 export function startBgm() {
   const c = ensure();
   if (!c) return;
+  if (store.settings.bgm === false) {
+    bgmOn = false;
+    return;
+  }
   bgmOn = true;
-  if (store.settings.bgm === false) return;
-  if (bgmTimer) return;
-  nextTime = c.currentTime + 0.05;
-  bgmTimer = setInterval(schedule, 90);
-  schedule();
+  startBgmTimer();
 }
 
 export function stopBgm() {
   bgmOn = false;
-  if (bgmTimer) {
-    clearInterval(bgmTimer);
-    bgmTimer = null;
-  }
+  stopBgmTimer();
 }
 
 export function isBgmPlaying() {
@@ -270,6 +507,7 @@ export function isBgmPlaying() {
 
 export function suspendAudio() {
   stopBgm();
+  stopVoice();
   if (ctx && ctx.state === "running") {
     try {
       ctx.suspend();
@@ -277,11 +515,42 @@ export function suspendAudio() {
   }
 }
 
+/** バックグラウンドから戻ったとき（BGMがONなら再開する） */
 export function resumeAudio() {
-  if (ctx && ctx.state === "suspended") {
+  recoverAudio();
+}
+
+/**
+ * 復帰のきっかけを受け取る配線。
+ * visibilitychange / pageshow / focus / 次のタップ / ネイティブの appStateChange。
+ */
+export function installAudioLifecycle() {
+  if (typeof document === "undefined") return;
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") suspendAudio();
+    else recoverAudio();
+  });
+  window.addEventListener("pageshow", () => recoverAudio());
+  window.addEventListener("focus", () => recoverAudio());
+  const gesture = () => {
+    if (audioState() !== "running") recoverAudio();
+  };
+  window.addEventListener("pointerdown", gesture, { capture: true, passive: true });
+  window.addEventListener("touchstart", gesture, { capture: true, passive: true });
+  window.addEventListener("keydown", gesture, { passive: true });
+  const cap = window.Capacitor;
+  if (cap && cap.Plugins && cap.Plugins.App) {
     try {
-      ctx.resume();
+      cap.Plugins.App.addListener("appStateChange", ({ isActive }) => {
+        if (isActive) recoverAudio();
+        else suspendAudio();
+      });
     } catch {}
   }
-  if (store.settings.bgm !== false) startBgm();
+}
+
+/** 起動時に一度だけ（BGMの設定を反映する） */
+export function bootAudio() {
+  installAudioLifecycle();
+  applySettings();
 }

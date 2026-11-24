@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Kachi Kachi Catch Build 2（フリーズ修正・音の復帰・ボイス・TA120/180秒・文字サイズ） -->
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
@@ -31,7 +32,6 @@
     <div class="grain"></div>
 
     <div class="title-head">
-      <div class="seal">詰</div>
       <h1 class="logo">
         <span class="l1" id="logo-l1">カチカチ</span>
         <span class="l2" id="logo-l2">キャッチ</span>
@@ -43,8 +43,9 @@
     <div class="hero">
       <div class="hero-frame">
         <img src="assets/title_hero.png" alt="" />
+        <span class="char-name name-rabbit" id="name-rabbit">ウサギロー</span>
+        <span class="char-name name-tanuki" id="name-tanuki">ポコ丸</span>
       </div>
-      <div class="hero-tag" id="hero-tag">5×5</div>
     </div>
 
     <div class="paw-trail" aria-hidden="true">
@@ -217,6 +218,15 @@
           <h3 id="r4t">④ 決められた手数で</h3>
           <p id="r4b"></p>
         </div>
+        <div class="rule-card">
+          <h3 id="r5t">罠（網）と障害物（岩・切り株）</h3>
+          <p id="r5b"></p>
+          <div class="mini" id="mini-3"></div>
+          <div class="mini-legend">
+            <span class="lg lg-trap"><i></i><span id="lg-trap">網（罠）</span></span>
+            <span class="lg lg-rock"><i></i><span id="lg-rock">岩・切り株</span></span>
+          </div>
+        </div>
       </div>
       <button class="btn primary wide" id="howto-ok" data-i18n="howto.start">わかった</button>
     </div>
@@ -239,8 +249,20 @@
         <button class="toggle" id="tg-se" role="switch"><i></i></button>
       </div>
       <div class="set-row">
+        <span data-i18n="settings.voice">ボイス</span>
+        <button class="toggle" id="tg-voice" role="switch"><i></i></button>
+      </div>
+      <div class="set-row">
         <span data-i18n="settings.haptics">バイブ</span>
         <button class="toggle" id="tg-haptics" role="switch"><i></i></button>
+      </div>
+      <div class="set-row set-row-size">
+        <span data-i18n="settings.textSize">文字サイズ</span>
+        <div class="seg" id="text-size-seg" role="group">
+          <button data-size="normal" role="button">標準</button>
+          <button data-size="large" role="button">大</button>
+          <button data-size="xlarge" role="button">特大</button>
+        </div>
       </div>
       <div class="set-row link" id="row-lang">
         <span data-i18n="settings.language">言語</span>
@@ -258,7 +280,7 @@
         <span data-i18n="settings.privacy">プライバシーポリシー</span>
         <span class="set-value"><b>›</b></span>
       </div>
-      <p class="version" id="version-line">Kachi Kachi Catch 1.0.0 (1)</p>
+      <p class="version" id="version-line">Kachi Kachi Catch 1.0.0 (2)</p>
     </div>
   </section>
 
@@ -284,6 +306,7 @@
         <h2 id="pro-title">Kachi Kachi Catch PRO</h2>
         <p id="pro-lead">買い切りの一度だけ</p>
       </div>
+      <p class="pro-free" id="pro-free"></p>
       <ul class="pro-items" id="pro-items"></ul>
       <p class="pro-price" id="pro-price">価格は App Store に表示されます</p>
       <button class="btn primary wide" id="pro-buy" data-i18n="pro.buy">購入する</button>
@@ -298,6 +321,18 @@
       <button class="sheet-close" id="lang-close">×</button>
       <h2 data-i18n="common.language">言語</h2>
       <div class="lang-list" id="lang-list"></div>
+    </div>
+  </div>
+
+  <!-- ============================ TIME ATTACK PICKER ============================ -->
+  <div class="sheet" id="ta-sheet">
+    <div class="sheet-card ta-card">
+      <button class="sheet-close" id="ta-close">×</button>
+      <div class="sheet-head ta-head">
+        <img src="assets/tanuki_token.png" alt="" />
+        <h2 id="ta-pick-title">タイムアタック</h2>
+      </div>
+      <div class="ta-pick-list" id="ta-pick-list"></div>
     </div>
   </div>
 

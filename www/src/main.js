@@ -1,5 +1,5 @@
 /* ============================================================
-   Kachi Kachi Catch — Build 1 controller
+   Kachi Kachi Catch — Build 2 controller
    ============================================================ */
 import { STAGES, DIFFICULTIES, PAR_OF, stageById, stagesOf } from "./stages.js";
 import { DAILY } from "./daily.js";
@@ -13,16 +13,21 @@ import {
   makeT,
   stringsOf,
 } from "./i18n.js";
-import { store } from "./storage.js";
+import { store, TA_DURATIONS, normalizeTextSize, normalizeTaDuration } from "./storage.js";
 import {
   sfx,
   unlockAudio,
   startBgm,
   stopBgm,
   suspendAudio,
-  resumeAudio,
+  recoverAudio,
   applySettings,
+  bootAudio,
+  playClip,
+  stopVoice,
+  audioDebug,
 } from "./audio.js";
+import { voiceFor } from "./voices.js";
 import { haptics } from "./haptics.js";
 import {
   PRODUCT_ID,
@@ -44,7 +49,9 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const VERSION = "1.0.0";
-const BUILD = 1;
+const BUILD = 2;
+/** タップ1回のロックが続く最大時間。これを過ぎたら「古いロック」とみなして解除する */
+const TAP_LOCK_MS = 2200;
 
 const app = {
   screen: "opening",
@@ -52,9 +59,54 @@ const app = {
   t: makeT("ja"),
   session: null, // {mode, stage, game, dailyKey}
   busy: false,
+  busySince: 0,
+  epoch: 0,
+  timers: new Set(),
   ta: null,
   product: null,
 };
+
+/* ---------------- 操作ロックの安全装置 ---------------- */
+/**
+ * ステージを移るとき・画面を離れるときに、進行中のアニメーションとタイマーを
+ * すべて捨ててロックを解除する。ここが漏れると「マスが押せない」状態になる。
+ */
+function resetInteraction() {
+  app.epoch += 1;
+  clearLater();
+  app.busy = false;
+  app.busySince = 0;
+  finishHop();
+  stopVoice();
+  $$(".cell.preview, .cell.hint").forEach((c) => c.classList.remove("preview", "hint"));
+  $$("#board .cell.flip, #board .cell.netted").forEach((c) => c.classList.remove("flip", "netted"));
+  const usa = $("#usagiro");
+  if (usa) usa.classList.remove("swing");
+  const tanuki = $("#tanuki");
+  if (tanuki) tanuki.classList.remove("sweating", "wobble", "caught");
+}
+
+/** ステージをまたいで残ってはいけないタイマー（setTimeout はここに集める） */
+function later(fn, ms) {
+  const id = setTimeout(() => {
+    app.timers.delete(id);
+    fn();
+  }, ms);
+  app.timers.add(id);
+  return id;
+}
+function clearLater() {
+  for (const id of app.timers) clearTimeout(id);
+  app.timers.clear();
+}
+
+/** ボイス（設定OFF・音が出せないときは静かに何もしない） */
+function speak(who, situation) {
+  try {
+    const v = voiceFor(app.lang, who, situation);
+    if (v) playClip(v.url);
+  } catch {}
+}
 
 /* ---------------- 言語 ---------------- */
 function detectLang() {
@@ -87,6 +139,11 @@ function applyI18n(root = document) {
 
 /* ---------------- 画面遷移 ---------------- */
 function nav(screen) {
+  if (screen !== "game") {
+    // ゲーム画面を離れたら、進行中の手・タイマー・ロックを全部たたむ
+    if (app.ta) stopTimeAttack();
+    if (app.screen === "game") resetInteraction();
+  }
   app.screen = screen;
   $$(".screen").forEach((el) => el.classList.toggle("active", el.id === `screen-${screen}`));
   if (screen === "select") renderSelect();
@@ -342,17 +399,47 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.classList.remove("show"), 2000);
 }
 
-/* ---------------- ポコ丸のセリフ ---------------- */
+/* ---------------- ポコ丸のセリフとボイス ---------------- */
+/**
+ * ポコ丸のセリフ吹き出しとボイスは同じ台本から出す。
+ * ボイスを先に選び、その種類に対応する文言を吹き出しに出す（声と文字がずれない）。
+ */
+const NOTE_KEY_FOR_VOICE = {
+  taunt0: "note.start",
+  taunt1: "note.taunt1",
+  taunt2: "note.taunt2",
+  taunt3: "note.taunt3",
+  panic1: "note.panic1",
+  panic2: "note.panic2",
+  panic3: "note.panic3",
+  caught1: "note.caught1",
+  caught2: "note.caught2",
+  escape1: "note.escape1",
+  escape2: "note.escape2",
+};
+
 function setNote(key, mood = "") {
-  $("#note-text").textContent = app.t(key);
+  const el = $("#note-text");
+  if (el) el.textContent = app.t(key);
   const note = $("#note");
+  if (!note) return;
   note.classList.toggle("panic", mood === "panic");
   note.classList.toggle("happy", mood === "happy");
+  const av = $("#note-av");
+  if (av) av.src = "assets/tanuki_face.png";
 }
+
+/** ポコ丸がしゃべる（吹き出し＋ボイス）。situation: start / taunt / panic / caught / escape */
+function tanukiSpeak(situation, mood = "") {
+  const v = voiceFor(app.lang, "pokomaru", situation);
+  setNote((v && NOTE_KEY_FOR_VOICE[v.key]) || "note.start", mood);
+  if (v) playClip(v.url);
+}
+
 function reactNote(game) {
   const opts = bits(tanukiOptionsMask(game.state.traps, game.state.pos, game.geom)).length;
-  if (opts <= 2) setNote(["note.panic1", "note.panic2", "note.panic3"][Math.floor(Math.random() * 3)], "panic");
-  else setNote(["note.taunt1", "note.taunt2", "note.taunt3"][Math.floor(Math.random() * 3)]);
+  if (opts <= 2) tanukiSpeak("panic", "panic");
+  else tanukiSpeak("taunt");
 }
 
 /* ---------------- タイトル ---------------- */
@@ -380,7 +467,10 @@ function renderTitle() {
     $("#logo-l2").textContent = words.slice(Math.ceil(words.length / 2)).join(" ") || "";
   }
   $("#title-tagline").textContent = t("app.tagline");
-  $("#hero-tag").textContent = t("app.tagline");
+  const nr = $("#name-rabbit");
+  if (nr) nr.textContent = t("char.rabbit");
+  const nt = $("#name-tanuki");
+  if (nt) nt.textContent = t("char.tanuki");
 }
 
 /* ---------------- ステージ一覧 ---------------- */
@@ -465,6 +555,9 @@ function openStage(stageOrId, opts = {}) {
     openProSheet();
     return;
   }
+  // 前のステージのアニメーション・タイマー・ロックを必ず捨ててから始める
+  resetInteraction();
+  const epoch = app.epoch;
   app.session = {
     mode,
     stage,
@@ -489,8 +582,10 @@ function openStage(stageOrId, opts = {}) {
   buildBoard(stage);
   nav("game");
   renderProgress();
-  setNote("note.start", "");
+  tanukiSpeak("start");
+  speak("usagiro", "start");
   requestAnimationFrame(() => {
+    if (epoch !== app.epoch) return; // もう別のステージに移っている
     paintBoard(game);
     const tanuki = $("#tanuki");
     tanuki.classList.remove("sweating", "caught", "wobble");
@@ -498,13 +593,15 @@ function openStage(stageOrId, opts = {}) {
     const c = cellCenter(game.state.pos);
     const x = c.x + (c.s - size) / 2;
     const y = c.y + (c.s - size) / 2;
-    tanuki.animate(
-      [
-        { transform: `translate(${x}px,${y}px) scale(.2)`, opacity: 0 },
-        { transform: `translate(${x}px,${y}px) scale(1)`, opacity: 1 },
-      ],
-      { duration: 380, easing: "cubic-bezier(.34,1.56,.5,1)" }
-    );
+    try {
+      tanuki.animate(
+        [
+          { transform: `translate(${x}px,${y}px) scale(.2)`, opacity: 0 },
+          { transform: `translate(${x}px,${y}px) scale(1)`, opacity: 1 },
+        ],
+        { duration: 380, easing: "cubic-bezier(.34,1.56,.5,1)" }
+      );
+    } catch {} // アニメーションが使えなくても盤面は出す
   });
 }
 
@@ -539,76 +636,106 @@ function updateHintLabel() {
 }
 
 /* ---------------- タップ ---------------- */
+/**
+ * 1手打つ。
+ * - app.busy は try/finally と epoch（ステージ世代）で必ず戻す
+ * - ステージを移ったあとの古い処理は何もしないで抜ける
+ * - 音・アニメーションが失敗してもゲームは止めない
+ * これで「1ステージごとにマスが押せなくなる」状態を作らない。
+ */
 async function tapCell(i) {
   const s = app.session;
-  if (!s || app.busy || s.game.status !== "playing") return false;
+  if (!s || s.game.status !== "playing") return false;
+  if (app.busy) {
+    // 進行中のタップがある。長く続いている（＝古いロック）なら解除して進む
+    if (Date.now() - app.busySince < TAP_LOCK_MS) return false;
+    app.busy = false;
+  }
   const game = s.game;
   if (!game.canTap(i)) {
     if (i === game.state.pos) showToast(app.t("game.cellBlocked", { name: app.t("char.tanuki") }));
     return false;
   }
+  const epoch = app.epoch;
   app.busy = true;
-  finishHop();
-  clearHint();
-  usagiroSwing(i);
-  const result = game.play(i);
-  if (!result) {
-    app.busy = false;
-    return false;
-  }
-  sfx.flip();
-  await flipAnimation(result.flipped, game);
-  $("#hud-moves").textContent = String(game.remaining);
-  if (game.remaining <= 1) $("#hud-moves-wrap").classList.add("low");
+  app.busySince = Date.now();
+  try {
+    finishHop();
+    clearHint();
+    usagiroSwing(i);
+    speak("usagiro", "tap");
+    const result = game.play(i);
+    if (!result) return false;
+    sfx.flip();
+    await flipAnimation(result.flipped, game);
+    if (epoch !== app.epoch) return false;
+    $("#hud-moves").textContent = String(game.remaining);
+    if (game.remaining <= 1) $("#hud-moves-wrap").classList.add("low");
 
-  if (result.caught) {
-    setNote("note.caught", "happy");
-    await onCaught(game, i);
-    app.busy = false;
-    return true;
-  }
-
-  const tanuki = $("#tanuki");
-  tanuki.classList.add("sweating", "wobble");
-  sfx.sweat();
-  await wait(170);
-  if (result.tanukiTo != null) await hop(game, result.tanukiFrom, result.tanukiTo);
-  paintBoard(game);
-  tanuki.classList.remove("sweating", "wobble");
-  reactNote(game);
-
-  if (s.mode === "ta") {
-    if (result.outOfMoves) {
-      haptics.warning();
-      sfx.fail();
-      app.busy = false;
-      taPenalty();
+    if (result.caught) {
+      await onCaught(game, i, epoch);
       return true;
     }
-  } else if (result.outOfMoves) {
-    await wait(180);
-    setNote("note.failed", "panic");
-    haptics.warning();
-    sfx.fail();
-    showFail(game);
+
+    const tanuki = $("#tanuki");
+    tanuki.classList.add("sweating", "wobble");
+    sfx.sweat();
+    await wait(170);
+    if (epoch !== app.epoch) return false;
+    if (result.tanukiTo != null) await hop(game, result.tanukiFrom, result.tanukiTo);
+    if (epoch !== app.epoch) return false;
+    paintBoard(game);
+    tanuki.classList.remove("sweating", "wobble");
+    reactNote(game);
+
+    if (s.mode === "ta") {
+      if (result.outOfMoves) {
+        haptics.warning();
+        sfx.fail();
+        app.busy = false;
+        app.busySince = 0;
+        taPenalty();
+        return true;
+      }
+    } else if (result.outOfMoves) {
+      await wait(180);
+      if (epoch !== app.epoch) return false;
+      tanukiSpeak("escape", "panic");
+      speak("usagiro", "fail");
+      haptics.warning();
+      sfx.fail();
+      showFail(game);
+    }
+    return true;
+  } catch (e) {
+    // 何が起きても操作を止めない（音・アニメーションの失敗を含む）
+    console.warn("tap failed:", e);
+    return false;
+  } finally {
+    if (epoch === app.epoch) {
+      app.busy = false;
+      app.busySince = 0;
+    }
   }
-  app.busy = false;
-  return true;
 }
 
-async function onCaught(game, cellIdx) {
+async function onCaught(game, cellIdx, epoch) {
   const tanuki = $("#tanuki");
   tanuki.classList.add("caught");
+  speak("usagiro", "clear");
+  tanukiSpeak("caught", "happy");
   sfx.catch_();
   haptics.success();
   spawnSparks(cellIdx);
   const s = app.session;
   if (s.mode === "ta") {
     await wait(240);
+    if (epoch !== app.epoch) return;
     taScore();
     return;
   }
   await wait(720);
+  if (epoch !== app.epoch) return;
   spawnConfetti();
   sfx.stageClear();
   if (s.mode === "daily" && s.dailyKey) store.markDailyCleared(s.dailyKey);
@@ -640,7 +767,7 @@ function showHint() {
   clearHint();
   $("#board").children[cell].classList.add("hint");
   showToast(app.t("game.tapHint"));
-  setTimeout(clearHint, 2600);
+  later(clearHint, 2600);
   return cell;
 }
 
@@ -694,7 +821,6 @@ function showFail(game) {
 }
 
 /* ---------------- タイムアタック ---------------- */
-const TA_SECONDS = 60;
 const TA_PENALTY = 3;
 
 function taPool() {
@@ -710,13 +836,53 @@ function taPool() {
     .map((x) => x.s);
 }
 
-function startTimeAttack() {
+/** タイムアタックの秒数だけでなくてもよいが、記録は秒ごとに別（60/120/180） */
+function taBest(seconds) {
+  return store.taBestFor(seconds);
+}
+
+/** 時間を選ぶシート（60 / 120 / 180 秒） */
+function openTaSheet() {
+  const t = app.t;
   if (!canTimeAttack()) {
     openProSheet();
     return;
   }
+  const title = $("#ta-pick-title");
+  if (title) title.textContent = t("ta.pickTime");
+  const list = $("#ta-pick-list");
+  if (!list) return;
+  list.innerHTML = "";
+  for (const sec of TA_DURATIONS) {
+    const b = document.createElement("button");
+    b.className = "ta-pick" + (normalizeTaDuration(store.settings.taDuration) === sec ? " sel" : "");
+    b.dataset.sec = String(sec);
+    b.innerHTML = `<span class="ta-pick-sec">${t("ta.seconds", { n: sec })}</span><span class="ta-pick-best">${t("ta.best")} ${taBest(sec)}</span>`;
+    b.addEventListener("click", () => {
+      unlockAudio();
+      sfx.ui();
+      closeSheet("ta-sheet");
+      startTimeAttack(sec);
+    });
+    list.appendChild(b);
+  }
+  openSheet("ta-sheet");
+}
+
+function startTimeAttack(seconds) {
+  if (!canTimeAttack()) {
+    openProSheet();
+    return;
+  }
+  const duration = normalizeTaDuration(seconds == null ? store.settings.taDuration : seconds);
+  store.setSetting("taDuration", duration);
+  stopTimeAttack();
+  resetInteraction();
   $("#overlay").classList.remove("show");
-  app.ta = { left: TA_SECONDS * 1000, score: 0, index: 0, timer: null, running: true, pool: taPool() };
+  app.ta = { duration, left: duration * 1000, score: 0, index: 0, timer: null, running: true, pool: taPool() };
+  $("#ta-time").textContent = String(duration);
+  $("#ta-time").classList.remove("low");
+  $("#ta-score").textContent = "0";
   openTaPuzzle();
   app.ta.timer = setInterval(taTick, 100);
 }
@@ -724,6 +890,8 @@ function startTimeAttack() {
 function openTaPuzzle() {
   const ta = app.ta;
   if (!ta) return;
+  resetInteraction();
+  const epoch = app.epoch;
   const stage = ta.pool[ta.index % ta.pool.length];
   app.session = { mode: "ta", stage, game: new Game(stage), dailyKey: null };
   $("#screen-game").classList.add("ta");
@@ -740,19 +908,23 @@ function openTaPuzzle() {
   buildBoard(stage);
   nav("game");
   renderProgress();
-  setNote("note.start", "");
+  tanukiSpeak("start");
   requestAnimationFrame(() => {
+    if (epoch !== app.epoch) return;
     paintBoard(app.session.game);
     const size = tokenSize();
     const c = cellCenter(app.session.game.state.pos);
-    $("#tanuki").classList.remove("caught", "sweating", "wobble");
-    $("#tanuki").animate(
-      [
-        { transform: `translate(${c.x + (c.s - size) / 2}px,${c.y + (c.s - size) / 2}px) scale(.2)`, opacity: 0 },
-        { transform: `translate(${c.x + (c.s - size) / 2}px,${c.y + (c.s - size) / 2}px) scale(1)`, opacity: 1 },
-      ],
-      { duration: 300, easing: "ease-out" }
-    );
+    const tanuki = $("#tanuki");
+    tanuki.classList.remove("caught", "sweating", "wobble");
+    try {
+      tanuki.animate(
+        [
+          { transform: `translate(${c.x + (c.s - size) / 2}px,${c.y + (c.s - size) / 2}px) scale(.2)`, opacity: 0 },
+          { transform: `translate(${c.x + (c.s - size) / 2}px,${c.y + (c.s - size) / 2}px) scale(1)`, opacity: 1 },
+        ],
+        { duration: 300, easing: "ease-out" }
+      );
+    } catch {}
   });
 }
 
@@ -774,7 +946,7 @@ function taScore() {
   ta.index += 1;
   $("#ta-score").textContent = String(ta.score);
   sfx.stageClear();
-  setTimeout(() => {
+  later(() => {
     if (ta.running) openTaPuzzle();
   }, 420);
 }
@@ -784,8 +956,9 @@ function taPenalty() {
   if (!ta) return;
   ta.left = Math.max(0, ta.left - TA_PENALTY * 1000);
   showToast(`−${TA_PENALTY}s`);
-  setNote("note.failed", "panic");
-  setTimeout(() => {
+  tanukiSpeak("escape", "panic");
+  speak("usagiro", "fail");
+  later(() => {
     if (ta.running) openTaPuzzle();
   }, 420);
 }
@@ -795,21 +968,30 @@ function endTimeAttack() {
   if (!ta) return;
   ta.running = false;
   clearInterval(ta.timer);
+  resetInteraction();
   sfx.timeUp();
-  const best = store.taBest;
-  const isNew = store.setTaBest(ta.score);
+  const duration = normalizeTaDuration(ta.duration);
+  const best = taBest(duration);
+  const isNew = store.setTaBestFor(duration, ta.score);
   const t = app.t;
   $("#card-img").innerHTML = `<img src="assets/tanuki_face.png" class="tanuki-img" alt="" />`;
   $("#card-title").textContent = t("ta.title");
-  $("#card-text").innerHTML = `${t("ta.result", { n: ta.score })}<br>${t("ta.best")} ${Math.max(best, ta.score)}${isNew ? " ・ " + t("ta.newBest") : ""}`;
+  $("#card-text").innerHTML = `${t("ta.seconds", { n: duration })} ・ ${t("ta.result", { n: ta.score })}<br>${t("ta.best")} ${Math.max(best, ta.score)}${isNew ? " ・ " + t("ta.newBest") : ""}`;
   const actions = $("#card-actions");
   actions.innerHTML = "";
-  actions.appendChild(cardButton(t("ta.again"), "", "", () => {
+  actions.appendChild(cardButton(t("ta.again"), t("ta.seconds", { n: duration }), "", () => {
     $("#overlay").classList.remove("show");
-    startTimeAttack();
+    startTimeAttack(duration);
+  }));
+  actions.appendChild(cardButton(t("ta.pickOther"), "", "ghost", () => {
+    $("#overlay").classList.remove("show");
+    app.ta = null;
+    nav("title");
+    openTaSheet();
   }));
   actions.appendChild(cardButton(t("common.back"), "", "ghost", () => {
     $("#overlay").classList.remove("show");
+    app.ta = null;
     nav("title");
   }));
   $("#overlay").classList.add("show");
@@ -824,11 +1006,26 @@ function stopTimeAttack() {
 }
 
 /* ---------------- 設定 ---------------- */
+/** 文字サイズ（標準 / 大 / 特大）を画面全体に反映する */
+function applyTextSize(value) {
+  const size = normalizeTextSize(value);
+  document.documentElement.setAttribute("data-text-size", size);
+  return size;
+}
+
+function setTextSize(value) {
+  const size = applyTextSize(value);
+  store.setSetting("textSize", size);
+  renderSettings();
+}
+
 function renderSettings() {
   const t = app.t;
   const s = store.settings;
   $("#tg-bgm").classList.toggle("on", s.bgm !== false);
   $("#tg-se").classList.toggle("on", s.se !== false);
+  const voiceBtn = $("#tg-voice");
+  if (voiceBtn) voiceBtn.classList.toggle("on", s.voice !== false);
   $("#tg-haptics").classList.toggle("on", s.haptics !== false);
   $("#set-lang").textContent = (LANGS.find((l) => l.code === app.lang) || LANGS[0]).label;
   $("#settings-title").textContent = t("settings.title");
@@ -839,6 +1036,19 @@ function renderSettings() {
   $("#privacy-title").textContent = t("privacy.title");
   $("#privacy-body").textContent = t("privacy.body");
   $("#privacy-link").textContent = t("privacy.open");
+  // 文字サイズの3択
+  const sizeRow = $("#text-size-seg");
+  if (sizeRow) {
+    const current = normalizeTextSize(s.textSize);
+    $$("button", sizeRow).forEach((b) => {
+      const on = b.dataset.size === current;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+      b.textContent = t("textSize." + b.dataset.size);
+    });
+  }
+  const sizeLabel = $("#set-textsize");
+  if (sizeLabel) sizeLabel.textContent = t("textSize." + normalizeTextSize(s.textSize));
 }
 
 function toggleSetting(name, btn) {
@@ -852,6 +1062,7 @@ function toggleSetting(name, btn) {
   if (name === "se" && next) {
     sfx.ui();
   }
+  if (name === "voice" && next) speak("usagiro", "start");
   applySettings();
   if (name === "haptics" && next) haptics.tap();
 }
@@ -868,6 +1079,14 @@ function renderRules() {
   $("#r3b").textContent = t("howto.r3b");
   $("#r4t").textContent = t("howto.r4t");
   $("#r4b").textContent = t("howto.r4b");
+  const r5t = $("#r5t");
+  if (r5t) r5t.textContent = t("howto.r5t");
+  const r5b = $("#r5b");
+  if (r5b) r5b.textContent = t("howto.r5b");
+  const lgTrap = $("#lg-trap");
+  if (lgTrap) lgTrap.textContent = t("howto.legendTrap");
+  const lgRock = $("#lg-rock");
+  if (lgRock) lgRock.textContent = t("howto.legendRock");
 }
 
 function buildMiniDiagrams() {
@@ -892,6 +1111,16 @@ function buildMiniDiagrams() {
       `<div class="floor"></div><img src="assets/tanuki_token.png" alt="" style="position:absolute;inset:1px;width:calc(100% - 2px);height:100%" />`;
     for (const i of [6, 7, 8, 11, 13, 16, 17, 18]) b.children[i].classList.add("escape");
   });
+  // ③ 罠（網のマス）と障害物（岩・切り株）を絵で見せる
+  mk($("#mini-3"), (b) => {
+    for (const i of [6, 7, 8, 11, 16, 18]) b.children[i].classList.add("is-trap");
+    for (const i of [13, 17]) {
+      b.children[i].classList.add("is-wall");
+      b.children[i].innerHTML = `<div class="rock">${rockSVG(wallArt(i))}</div>`;
+    }
+    b.children[12].innerHTML =
+      `<div class="floor"></div><img src="assets/tanuki_token.png" alt="" style="position:absolute;inset:1px;width:calc(100% - 2px);height:100%" />`;
+  });
 }
 
 /* ---------------- PRO ---------------- */
@@ -899,6 +1128,8 @@ function renderProSheet() {
   const t = app.t;
   $("#pro-title").textContent = t("pro.title", { app: t("app.title") });
   $("#pro-lead").textContent = t("pro.lead");
+  const free = $("#pro-free");
+  if (free) free.textContent = t("pro.free");
   $("#pro-items").innerHTML = ["pro.item1", "pro.item2", "pro.item3", "pro.item4", "pro.item5"]
     .map((k) => `<li><b>✓</b>${t(k)}</li>`)
     .join("");
@@ -1045,7 +1276,7 @@ function bind() {
   $("#btn-ta").addEventListener("click", () => {
     sfx.ui();
     if (!canTimeAttack()) openProSheet();
-    else startTimeAttack();
+    else openTaSheet();
   });
   $("#btn-howto").addEventListener("click", () => {
     sfx.ui();
@@ -1114,6 +1345,11 @@ function bind() {
     if (!cell) return;
     unlockAudio();
     const s = app.session;
+    // 古いロックが残っていてもここで掃除する（押せないままにしない）
+    if (app.busy && Date.now() - app.busySince > TAP_LOCK_MS) {
+      app.busy = false;
+      app.busySince = 0;
+    }
     if (!s || s.game.status !== "playing" || app.busy) return;
     const i = Number(cell.dataset.i);
     if (!s.game.canTap(i)) return;
@@ -1123,6 +1359,14 @@ function bind() {
     const cell = e.target.closest(".cell");
     $$(".cell.preview").forEach((c) => c.classList.remove("preview"));
     if (!cell) return;
+    app.lastPointerTap = Date.now();
+    tapCell(Number(cell.dataset.i));
+  });
+  // iOS では pointerup が来ないまま終わることがあるので touch でも拾う
+  board.addEventListener("click", (e) => {
+    const cell = e.target.closest(".cell");
+    if (!cell) return;
+    if (Date.now() - (app.lastPointerTap || 0) < 400) return; // pointerup と二重にしない
     tapCell(Number(cell.dataset.i));
   });
   board.addEventListener("pointercancel", () => $$(".cell.preview").forEach((c) => c.classList.remove("preview")));
@@ -1138,7 +1382,18 @@ function bind() {
   // settings
   $("#tg-bgm").addEventListener("click", (e) => toggleSetting("bgm", e.currentTarget));
   $("#tg-se").addEventListener("click", (e) => toggleSetting("se", e.currentTarget));
+  const voiceToggle = $("#tg-voice");
+  if (voiceToggle) voiceToggle.addEventListener("click", (e) => toggleSetting("voice", e.currentTarget));
   $("#tg-haptics").addEventListener("click", (e) => toggleSetting("haptics", e.currentTarget));
+  const sizeSeg = $("#text-size-seg");
+  if (sizeSeg) {
+    sizeSeg.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-size]");
+      if (!b) return;
+      sfx.ui();
+      setTextSize(b.dataset.size);
+    });
+  }
   $("#row-lang").addEventListener("click", () => {
     renderLangSheet();
     openSheet("lang-sheet");
@@ -1150,6 +1405,16 @@ function bind() {
     nav("privacy");
   });
 
+  // タイムアタックの時間選び
+  const taClose = $("#ta-close");
+  if (taClose) taClose.addEventListener("click", () => closeSheet("ta-sheet"));
+  const taSheet = $("#ta-sheet");
+  if (taSheet) {
+    taSheet.addEventListener("click", (e) => {
+      if (e.target.id === "ta-sheet") closeSheet("ta-sheet");
+    });
+  }
+
   // pro
   $("#pro-close").addEventListener("click", () => closeSheet("pro-sheet"));
   $("#pro-sheet").addEventListener("click", (e) => {
@@ -1159,25 +1424,14 @@ function bind() {
   $("#pro-restore").addEventListener("click", doRestore);
   $("#btn-pro-from-select").addEventListener("click", () => openProSheet());
 
-  // ライフサイクル: バックグラウンドで BGM 停止
+  // ライフサイクル: タブが隠れたらタイマーを止めるだけ（音の復帰は audio.js が面倒を見る）
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-      suspendAudio();
       if (app.ta) app.ta.paused = true;
-    } else {
-      resumeAudio();
-      if (app.ta) app.ta.paused = false;
+    } else if (app.ta) {
+      app.ta.paused = false;
     }
   });
-  const cap = window.Capacitor;
-  if (cap && cap.Plugins && cap.Plugins.App) {
-    try {
-      cap.Plugins.App.addListener("appStateChange", ({ isActive }) => {
-        if (isActive) resumeAudio();
-        else suspendAudio();
-      });
-    } catch {}
-  }
 }
 
 /* ---------------- デモ・検証用 API ---------------- */
@@ -1211,7 +1465,9 @@ function exposeApi() {
       const p = pastDailies(n, new Date())[n - 1];
       if (p) openStage(p.stage, { mode: "daily", dailyKey: p.key });
     },
-    startTa: () => startTimeAttack(),
+    startTa: (seconds) => startTimeAttack(seconds),
+    openTaSheet: () => openTaSheet(),
+    taDurations: () => TA_DURATIONS.slice(),
     setPro: (v) => {
       store.setPro(!!v);
       renderTitle();
@@ -1249,7 +1505,7 @@ function exposeApi() {
         history: s.game.history.map((h) => ({ cell: cellKey(h.cell), tanuki: h.tanukiTo == null ? null : cellKey(h.tanukiTo) })),
       };
     },
-    taState: () => (app.ta ? { score: app.ta.score, left: Math.ceil(app.ta.left / 1000), running: app.ta.running } : null),
+    taState: () => (app.ta ? { score: app.ta.score, left: Math.ceil(app.ta.left / 1000), running: app.ta.running, duration: app.ta.duration } : null),
     counts: () => ({
       stages: STAGES.length,
       daily: DAILY.length,
@@ -1257,6 +1513,35 @@ function exposeApi() {
       dailyToday: dailyIndexFor(new Date()),
     }),
     busy: () => app.busy,
+    /* ---- 設定・音・ボイス（検査用） ---- */
+    textSize: () => normalizeTextSize(store.settings.textSize),
+    setTextSize: (v) => {
+      setTextSize(v);
+      return normalizeTextSize(store.settings.textSize);
+    },
+    audio: () => audioDebug(),
+    /** iOS の interrupted などを再現する（E2E 用） */
+    forceAudioState: (state) => {
+      window.__kachiAudioForceState = state || null;
+      return audioDebug();
+    },
+    recoverAudio: () => recoverAudio(),
+    /** 画面を裏に回して戻すのを再現（visibilitychange → 復帰） */
+    simulateBackgroundReturn: async () => {
+      suspendAudio();
+      await wait(60);
+      await recoverAudio();
+      return audioDebug();
+    },
+    voice: (who, situation) => voiceFor(app.lang, who, situation),
+    playVoice: (who, situation) => {
+      speak(who, situation);
+      return audioDebug();
+    },
+    note: () => ({
+      text: $("#note-text") ? $("#note-text").textContent : "",
+      tanuki: app.t("char.tanuki"),
+    }),
   };
 }
 
@@ -1266,6 +1551,7 @@ async function init() {
   app.t = makeT(app.lang);
   document.documentElement.lang = app.lang;
   const dev = devUnlock();
+  applyTextSize(store.settings.textSize);
   applyI18n();
   buildMiniDiagrams();
   bind();
@@ -1275,7 +1561,7 @@ async function init() {
   renderLangSheet();
   renderProSheet();
   exposeApi();
-  applySettings();
+  bootAudio();
   if (dev) {
     renderSelect();
   }

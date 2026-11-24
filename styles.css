@@ -942,3 +942,239 @@ button { font-family: inherit; }
 .howto-scroll { padding: 0 2px 8px; gap: 8px; max-height: 62vh; }
 .howto-card .rule-card { padding: 10px 12px; }
 .howto-card .btn.wide { margin-top: 4px; }
+
+/* ============================================================
+   Build 2 — 文字サイズ / ホーム拡大 / タイムアタックの時間選び / あそびかた図解
+   ============================================================ */
+
+/* ---------------- 文字サイズ（標準 / 大 / 特大） ---------------- */
+:root { --ts: 1; }
+html[data-text-size="large"] { --ts: 1.14; }
+html[data-text-size="xlarge"] { --ts: 1.3; }
+
+/* 盤面・アイコンはそのまま、読む文字だけを拡大する */
+.btn .btn-main { font-size: calc(clamp(17px, 5vw, 20px) * var(--ts)); }
+.btn .btn-sub { font-size: calc(10px * var(--ts)); }
+.btn.menu-btn { font-size: min(calc(14.5px * var(--ts)), 16px); }
+.btn.ghost { font-size: calc(14px * var(--ts)); }
+.btn.small, .btn.small span { font-size: calc(13px * var(--ts)); }
+.chip { font-size: calc(12px * var(--ts)); }
+.credit { font-size: calc(10px * var(--ts)); }
+.logo-en { font-size: calc(10px * var(--ts)); }
+.title-tag { font-size: calc(11px * var(--ts)); }
+.hero-tag { font-size: calc(11px * var(--ts)); }
+.stage-meta .kicker { font-size: calc(10px * var(--ts)); }
+.stage-meta strong { font-size: calc(15px * var(--ts)); }
+.moves span, .moves i { font-size: calc(10px * var(--ts)); }
+.moves b { font-size: calc(20px * var(--ts)); }
+.par { font-size: calc(11px * var(--ts)); }
+.strip-text { font-size: calc(11px * var(--ts)); }
+.meter-label { font-size: calc(10px * var(--ts)); }
+.meter-num { font-size: calc(14px * var(--ts)); }
+.note p { font-size: calc(12px * var(--ts)); }
+.toast { font-size: calc(12px * var(--ts)); }
+.card h2 { font-size: calc(24px * var(--ts)); }
+.card p { font-size: calc(12px * var(--ts)); }
+.diff-head h2 { font-size: calc(14px * var(--ts)); }
+.stage-item .num { font-size: calc(9px * var(--ts)); }
+.stage-item .pg { font-size: calc(10px * var(--ts)); }
+.daily-badge { font-size: calc(10px * var(--ts)); }
+.daily-par { font-size: calc(11px * var(--ts)); }
+.daily-card h2 { font-size: calc(16px * var(--ts)); }
+.daily-card p { font-size: calc(11px * var(--ts)); }
+.past-row .d { font-size: calc(11px * var(--ts)); }
+.past-row .p { font-size: calc(10px * var(--ts)); }
+.set-row { font-size: calc(14px * var(--ts)); }
+.set-value { font-size: calc(12px * var(--ts)); }
+.version { font-size: calc(10px * var(--ts)); }
+.privacy-scroll p { font-size: calc(12.5px * var(--ts)); }
+.rule-card h3 { font-size: calc(13px * var(--ts)); }
+.rule-card p { font-size: calc(11.5px * var(--ts)); }
+.sheet-head h2 { font-size: calc(19px * var(--ts)); }
+.sheet-head p { font-size: calc(11px * var(--ts)); }
+.pro-items li { font-size: calc(12px * var(--ts)); }
+.pro-price, .pro-note { font-size: calc(11px * var(--ts)); }
+.lang-row { font-size: calc(13px * var(--ts)); }
+.howto-head h2 { font-size: calc(17px * var(--ts)); }
+.ta-hud .ta-time { font-size: calc(18px * var(--ts)); }
+.ta-hud .ta-score b { font-size: calc(16px * var(--ts)); }
+.seg button { font-size: calc(12px * var(--ts)); }
+.ta-pick-sec { font-size: calc(18px * var(--ts)); }
+.ta-pick-best { font-size: calc(11px * var(--ts)); }
+.mini-legend { font-size: calc(10.5px * var(--ts)); }
+
+/* ---------------- ホーム画面を一回り大きく ---------------- */
+.logo { font-size: clamp(34px, 12.4vw, 48px); }
+.logo-en { letter-spacing: .3em; }
+.title-head { padding: 0 16px; }
+.seal { width: 42px; height: 42px; line-height: 42px; font-size: 23px; }
+.hero-frame { width: min(96%, 392px); }
+.hero-tag { padding: 5px 11px; }
+.title-foot { gap: 9px; padding: 0 18px; }
+.menu-grid { gap: 9px; }
+.btn.menu-btn { padding: 12px 8px; border-radius: 15px; }
+.btn.menu-btn .ico { font-size: 15px; }
+.btn.menu-btn .pro-chip { font-size: 9.5px; }
+.chip { padding: 7px 13px; }
+#btn-play { padding: 14px 18px 13px; }
+#btn-play .btn-main { letter-spacing: .05em; }
+.paw-trail { margin-top: -6px; }
+
+/* ---------------- 設定: 文字サイズの3択 ---------------- */
+.set-row-size { align-items: center; }
+.seg {
+  display: inline-flex;
+  background: #f3e6d2;
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.seg button {
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-weight: 800;
+  padding: 7px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+  min-width: 44px;
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.seg button.on {
+  background: #fffdf7;
+  color: var(--verm-dark);
+  box-shadow: 0 2px 0 #e6c9a4, inset 0 0 0 1.5px #f0c9a1;
+}
+
+/* ---------------- タイムアタックの時間選び ---------------- */
+.ta-card { padding-top: 22px; }
+.ta-head img { width: 62px; height: 62px; }
+.ta-pick-list { display: flex; flex-direction: column; gap: 9px; margin-top: 4px; }
+.ta-pick {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  border: 2px solid #e9b48d;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fffdf7, #fff2dc);
+  box-shadow: 0 4px 0 #e9b48d;
+  color: var(--verm-dark);
+  padding: 15px 12px;
+  cursor: pointer;
+  font-weight: 900;
+}
+.ta-pick:active { transform: translateY(3px); box-shadow: 0 1px 0 #e9b48d; }
+.ta-pick.sel { border-color: var(--verm); box-shadow: 0 4px 0 var(--verm); }
+.ta-pick-sec { letter-spacing: .04em; }
+.ta-pick-best { color: var(--ink-soft); font-weight: 800; }
+
+/* ---------------- あそびかた: 罠・障害物の図解と凡例 ---------------- */
+.mini-legend {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 7px;
+  color: var(--ink-soft);
+  font-weight: 800;
+}
+.mini-legend .lg { display: inline-flex; align-items: center; gap: 5px; }
+.mini-legend .lg i { width: 13px; height: 13px; border-radius: 4px; display: inline-block; }
+.mini-legend .lg-trap i {
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, .22) 0 1.5px, transparent 1.5px 5px),
+    radial-gradient(circle at 50% 45%, #46536f 0%, var(--trap) 60%, var(--trap2) 100%);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .5);
+}
+.mini-legend .lg-rock i { background: linear-gradient(160deg, #a49a8c, #6d5537); }
+.mini .cell.is-wall { border-radius: 5px; }
+.mini .cell.is-trap .floor { border-radius: 5px; }
+
+/* 小さい画面では図解を少し縮める（特大文字でもはみ出さない） */
+@media (max-height: 720px) {
+  .mini .board { width: 118px; height: 118px; }
+  .hero-frame { width: min(84%, 300px); }
+  .logo { font-size: clamp(30px, 11vw, 40px); }
+}
+
+/* ホーム: 空いた高さいっぱいにキャラを広げる（マスクで縁が消えるので端は切れてよい） */
+.hero { flex: 1 1 auto; width: 100%; overflow: hidden; }
+.hero-frame { flex: 0 0 auto; width: min(148%, 620px); }
+.hero img { width: 100%; height: auto; max-height: 100%; object-fit: contain; }
+.sun { top: -140px; right: -96px; width: 236px; height: 236px; }
+
+.logo { font-size: clamp(36px, 12.8vw, 52px); }
+.title-tag { letter-spacing: .12em; }
+
+/* PROシート: 無料範囲の案内 */
+.pro-free {
+  margin: 0 0 9px;
+  background: #fff6e3;
+  border: 1.5px dashed #e6c49a;
+  border-radius: 12px;
+  padding: 8px 10px;
+  font-size: calc(11px * var(--ts));
+  line-height: 1.5;
+  font-weight: 700;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+/* ---------------- ホーム: サブタイトルのピルとキャラ名ラベル ---------------- */
+.title-tag {
+  display: inline-block;
+  margin: 5px 0 0;
+  font-size: calc(10.5px * var(--ts));
+  font-weight: 800;
+  letter-spacing: .14em;
+  color: var(--verm-dark);
+  background: #fffaf0;
+  border: 2px solid var(--verm);
+  border-radius: 999px;
+  padding: 3px 13px;
+  box-shadow: 0 2px 0 rgba(178, 58, 28, .22);
+  transform: rotate(-1.2deg);
+  text-shadow: none;
+}
+.hero-frame { position: relative; }
+.char-name {
+  position: absolute;
+  transform: translateX(-50%) rotate(-5deg);
+  white-space: nowrap;
+  font-size: calc(15px * min(var(--ts), 1.08));
+  font-weight: 900;
+  letter-spacing: .05em;
+  line-height: 1;
+  padding: 7px 22px;
+  border-radius: 999px;
+  color: #fff;
+  border: 2.5px solid #fffaf0;
+  text-shadow: 0 1.5px 0 rgba(20, 30, 60, .35);
+  box-shadow: 0 3px 0 rgba(30, 50, 90, .28), 0 8px 16px rgba(70, 45, 20, .22);
+}
+.char-name::before, .char-name::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 2.5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, .92);
+  transform: translateY(-50%);
+}
+.char-name::before { left: 7px; }
+.char-name::after { right: 7px; }
+.name-rabbit {
+  left: 46.5%;
+  top: 3.4%;
+  background: linear-gradient(180deg, #6a9be8 0%, #3a68c0 55%, #2f5db0 100%);
+  rotate: -5deg;
+}
+.name-tanuki {
+  left: 73.5%;
+  top: 0.8%;
+  transform: translateX(-50%) rotate(4.5deg);
+  background: linear-gradient(180deg, #7fc46f 0%, #4c9a44 55%, #3f8f4a 100%);
+}

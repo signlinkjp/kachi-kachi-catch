@@ -48,7 +48,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // バックグラウンドでは BGM を止める（Web 側も visibilitychange で停止する）
     }
 
-    func applicationWillEnterForeground(_ application: UIApplication) {}
+    func applicationWillEnterForeground(_ application: UIApplication) {
+        // 戻ってきたら必ず AudioSession を起こし直す（WKWebView 側も resume し直す）
+        AppDelegate.activateAudioSession()
+    }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         AppDelegate.activateAudioSession()
@@ -84,8 +87,37 @@ public class KachiAudioPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "KachiAudioPlugin"
     public let jsName = "KachiAudio"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "activate", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "activate", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "status", returnType: CAPPluginReturnPromise)
     ]
+
+    override public func load() {
+        AppDelegate.activateAudioSession()
+        // 電話・Siri・イヤホン差し替え・メディアサービスのリセットから戻ったら起こし直す
+        let center = NotificationCenter.default
+        center.addObserver(
+            self,
+            selector: #selector(handleInterruption(_:)),
+            name: AVAudioSession.interruptionNotification,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(handleMediaReset(_:)),
+            name: AVAudioSession.mediaServicesWereResetNotification,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(handleRouteChange(_:)),
+            name: AVAudioSession.routeChangeNotification,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
 
     @objc public func activate(_ call: CAPPluginCall) {
         AppDelegate.activateAudioSession()
@@ -94,6 +126,38 @@ public class KachiAudioPlugin: CAPPlugin, CAPBridgedPlugin {
             "category": session.category.rawValue,
             "active": session.isOtherAudioPlaying
         ])
+    }
+
+    /// いまの AudioSession の様子（Web 側の復帰判断に使う）
+    @objc public func status(_ call: CAPPluginCall) {
+        let session = AVAudioSession.sharedInstance()
+        call.resolve([
+            "category": session.category.rawValue,
+            "otherAudioPlaying": session.isOtherAudioPlaying,
+            "outputVolume": Double(session.outputVolume)
+        ])
+    }
+
+    @objc private func handleInterruption(_ note: Notification) {
+        guard
+            let info = note.userInfo,
+            let raw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+            let type = AVAudioSession.InterruptionType(rawValue: raw)
+        else { return }
+        if type == .ended {
+            AppDelegate.activateAudioSession()
+            notifyListeners("audioResumed", data: ["reason": "interruptionEnded"])
+        }
+    }
+
+    @objc private func handleMediaReset(_ note: Notification) {
+        AppDelegate.activateAudioSession()
+        notifyListeners("audioResumed", data: ["reason": "mediaServicesReset"])
+    }
+
+    @objc private func handleRouteChange(_ note: Notification) {
+        // イヤホンを抜き差しすると AudioSession が止まることがある
+        AppDelegate.activateAudioSession()
     }
 }
 

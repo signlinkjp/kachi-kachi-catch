@@ -18,11 +18,11 @@ test("商品IDは jp.signlink.KachiCatch.pro", () => {
   assert.equal(PRODUCT_ID, "jp.signlink.KachiCatch.pro");
 });
 
-test("無料で遊べるのは 初級10 + 中級前半10 = 20問", () => {
+test("無料で遊べるのは 初級10 + 中級15 = 25問", () => {
   const free = STAGES.filter((s) => canPlayStage(s, false));
-  assert.equal(free.length, 20);
+  assert.equal(free.length, 25);
   assert.equal(free.filter((s) => s.difficulty === "beginner").length, 10);
-  assert.equal(free.filter((s) => s.difficulty === "middle").length, 10);
+  assert.equal(free.filter((s) => s.difficulty === "middle").length, 15);
   assert.equal(free.filter((s) => s.difficulty === "advanced").length, 0);
   assert.equal(free.filter((s) => s.difficulty === "expert").length, 0);
 });
@@ -32,12 +32,20 @@ test("PROなら50問すべて遊べる", () => {
   assert.equal(all.length, 50);
 });
 
-test("中級の11〜15（グループ内の番号）はPROのみ", () => {
+test("中級は全問無料（PROでも同じ）", () => {
   const middle = STAGES.filter((s) => s.difficulty === "middle");
+  assert.equal(middle.length, 15);
   for (const s of middle) {
     const no = stageNoInGroup(s);
     assert.ok(no >= 1 && no <= 15, `中級の通し番号 ${no}`);
-    assert.equal(canPlayStage(s, false), no <= 10, `中級${no}`);
+    assert.equal(canPlayStage(s, false), true, `中級${no} は無料`);
+    assert.equal(canPlayStage(s, true), true);
+  }
+});
+
+test("上級・激ムズはPROのみ", () => {
+  for (const s of STAGES.filter((s) => s.difficulty === "advanced" || s.difficulty === "expert")) {
+    assert.equal(canPlayStage(s, false), false, `${s.id} はPROのみ`);
     assert.equal(canPlayStage(s, true), true);
   }
 });
@@ -64,7 +72,7 @@ test("無料ヒントは1ステージ3回まで・PROは無制限", () => {
 test("store の PRO フラグが canPlayStage の既定値に効く", () => {
   store.setPro(false);
   assert.equal(canPlayStage(stageById("s01")), true); // 初級1
-  assert.equal(canPlayStage(stageById("s21")), false); // 中級11（PROのみ）
+  assert.equal(canPlayStage(stageById("s21")), true); // 中級11（中級まで無料）
   assert.equal(canPlayStage(stageById("s26")), false); // 上級1
   store.setPro(true);
   assert.equal(canPlayStage(stageById("s21")), true);

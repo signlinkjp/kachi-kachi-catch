@@ -96,13 +96,15 @@ export function stageNoInGroup(stage) {
   return stage.index - start + 1;
 }
 
-/** ステージが遊べるか */
+/** ステージが遊べるか（初級10 + 中級15 = 25問が無料、上級・激ムズは PRO） */
 export function canPlayStage(stage, pro = store.pro) {
   if (!stage) return false;
-  if (stage.difficulty === "beginner") return true; // 初級10問は無料
-  if (stage.difficulty === "middle") return stageNoInGroup(stage) <= 10 || !!pro; // 前半10問は無料、残りは PRO
+  if (stage.difficulty === "beginner" || stage.difficulty === "middle") return true; // 中級まで無料（25問）
   return !!pro; // 上級・激ムズは PRO
 }
+
+/** 無料で遊べる問題数（初級10 + 中級15） */
+export const FREE_STAGE_COUNT = 25;
 
 export const canTimeAttack = (pro = store.pro) => !!pro;
 

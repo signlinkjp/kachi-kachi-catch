@@ -27,6 +27,19 @@ for (const f of ASSETS) {
   const src = path.join(ROOT, "assets", f);
   if (fs.existsSync(src)) fs.copyFileSync(src, path.join(OUT, "assets", f));
 }
+// ボイス（assets/voices/<lang>/*.mp3）はフォルダごとコピーする
+const VOICES = path.join(ROOT, "assets", "voices");
+if (fs.existsSync(VOICES)) {
+  for ( const lang of fs.readdirSync(VOICES)) {
+    const srcDir = path.join(VOICES, lang);
+    if (!fs.statSync(srcDir).isDirectory()) continue;
+    const outDir = path.join(OUT, "assets", "voices", lang);
+    fs.mkdirSync(outDir, { recursive: true });
+    for (const f of fs.readdirSync(srcDir)) {
+      if (f.endsWith(".mp3")) fs.copyFileSync(path.join(srcDir, f), path.join(outDir, f));
+    }
+  }
+}
 const files = [];
 const walk = (dir) => {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
