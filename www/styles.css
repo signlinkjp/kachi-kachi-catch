@@ -101,18 +101,143 @@ button { font-family: inherit; }
   to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
 .open-inner { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.open-rabbit, .open-tanuki {
+
+/* ---- Build 5: 追いかけオープニング ----
+   ポコ丸が慌てて右から左へ逃げ、臼の杵を持ったウサギローがトテトテ追いかけて、
+   最後はホーム画面と同じ2人の位置へ着地する。
+   動かすのは transform と opacity だけ（GPU 合成）。タップは下の .screen が受け、
+   この層は pointer-events: none。オープニングを離れたら .playing が外れて完全に消える。 */
+.open-chase {
   position: absolute;
+  inset: 0;
+  pointer-events: none;
+  --run-x: min(78vw, 350px);
+}
+#screen-opening:not(.playing) .open-chase { opacity: 0; }
+.chase-runner {
+  position: absolute;
+  top: -30px;
   width: 38vw;
   max-width: 170px;
-  top: -30px;
+  display: block;
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.chase-tanuki { left: calc(100% - min(38vw, 170px) + 30px); }
+.chase-usagiro { left: -30px; }
+.open-rabbit, .open-tanuki {
+  display: block;
+  width: 100%;
   border-radius: 50%;
   filter: drop-shadow(0 10px 14px rgba(110, 60, 20, .25));
 }
-.open-rabbit { left: -30px; animation: openL 1.8s cubic-bezier(.2, .9, .3, 1) both; }
-.open-tanuki { right: -30px; animation: openR 1.8s cubic-bezier(.2, .9, .3, 1) both; }
-@keyframes openL { from { transform: translate(-120px, 20px) scale(.6) rotate(-16deg); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes openR { from { transform: translate(120px, 20px) scale(.6) rotate(16deg); opacity: 0; } to { transform: none; opacity: 1; } }
+#screen-opening.playing .chase-tanuki { animation: chaseTanuki 1.6s cubic-bezier(.3, .7, .3, 1) both; }
+#screen-opening.playing .chase-usagiro { animation: chaseUsagiro 1.6s cubic-bezier(.3, .7, .3, 1) both; }
+@keyframes chaseTanuki {
+  0% { transform: translate3d(520px, 12px, 0) scaleX(-1) rotate(-6deg); opacity: 0; }
+  10% { transform: translate3d(380px, 2px, 0) scaleX(-1) rotate(5deg); opacity: 1; }
+  34% { transform: translate3d(-215px, -12px, 0) scaleX(-1) rotate(6deg); opacity: 1; }
+  44% { transform: translate3d(-215px, 0, 0) scaleX(-1) rotate(-4deg); opacity: 1; }
+  48% { transform: translate3d(-212px, -6px, 0) scaleX(1) rotate(4deg); opacity: 1; }
+  70% { transform: translate3d(-40px, -8px, 0) scaleX(1) rotate(-3deg); opacity: 1; }
+  80% { transform: translate3d(0, 2px, 0) scale(1.08, .92); opacity: 1; }
+  90% { transform: translate3d(0, -3px, 0) scale(.98, 1.02); opacity: 1; }
+  100% { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+@keyframes chaseUsagiro {
+  0% { transform: translate3d(560px, 14px, 0) rotate(-4deg); opacity: 0; }
+  10% { opacity: 1; }
+  36% { transform: translate3d(230px, -14px, 0) rotate(4deg); opacity: 1; }
+  52% { transform: translate3d(40px, -6px, 0) rotate(-4deg); opacity: 1; }
+  64% { transform: translate3d(0, -12px, 0) rotate(2deg); opacity: 1; }
+  72% { transform: translate3d(0, 2px, 0) scale(1.06, .94); opacity: 1; }
+  80% { transform: translate3d(0, -4px, 0) scale(.99, 1.01); opacity: 1; }
+  100% { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+/* 臼の杵（木製の杵）: ウサギローが小刻みに振り上げる。
+   丸いトークンの左下から右上へ伸ばし、先に杵の頭を付けて「持っている」形にする。 */
+.chase-mallet {
+  position: absolute;
+  left: 3%;
+  top: 12%;
+  width: 12%;
+  height: 58%;
+  border-radius: 999px;
+  background: linear-gradient(160deg, #f2c685 0%, #d59a55 55%, #a86b33 100%);
+  border: 2px solid #8a5a2e;
+  box-shadow: 0 3px 6px rgba(90, 50, 20, .28);
+  transform-origin: 50% 96%;
+  transform: rotate(30deg);
+  opacity: 0;
+  pointer-events: none;
+}
+.chase-mallet::after {
+  content: "";
+  position: absolute;
+  left: -85%;
+  top: -6%;
+  width: 270%;
+  height: 26%;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #f6d3a0, #b8763a);
+  border: 2px solid #8a5a2e;
+  box-shadow: inset 0 2px 0 rgba(255, 245, 225, .5);
+}
+#screen-opening.playing .chase-mallet { animation: malletBob .36s ease-in-out infinite; }
+@keyframes malletBob {
+  0%, 100% { transform: rotate(16deg) translate3d(0, 0, 0); opacity: 1; }
+  50% { transform: rotate(44deg) translate3d(0, -6px, 0); opacity: 1; }
+}
+.chase-sweat {
+  position: absolute;
+  right: 4%;
+  top: -4%;
+  font-size: 15px;
+  font-style: normal;
+  opacity: 0;
+}
+#screen-opening.playing .chase-sweat { animation: sweatPop .55s ease-in-out infinite; }
+@keyframes sweatPop {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(.85); opacity: .45; }
+  50% { transform: translate3d(0, -6px, 0) scale(1); opacity: 1; }
+}
+.chase-dust {
+  position: absolute;
+  bottom: 0;
+  left: 12%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff7e6;
+  opacity: 0;
+}
+/* 走っている速さを伝える横のスピード線（transform と opacity だけ） */
+.chase-speed {
+  position: absolute;
+  right: -26%;
+  top: 40%;
+  width: 30%;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(226, 87, 46, .5), rgba(226, 87, 46, 0));
+  opacity: 0;
+  pointer-events: none;
+}
+.chase-speed.s2 { top: 58%; right: -18%; width: 20%; height: 3px; }
+#screen-opening.playing .chase-speed { animation: speedFlick .32s ease-in-out infinite; }
+#screen-opening.playing .chase-speed.s2 { animation-delay: .16s; }
+@keyframes speedFlick {
+  0%, 100% { transform: translate3d(0, 0, 0); opacity: .15; }
+  50% { transform: translate3d(7px, 0, 0); opacity: .8; }
+}
+.chase-dust.d2 { left: 46%; width: 10px; height: 10px; }
+#screen-opening.playing .chase-dust { animation: dustPuff .5s ease-out infinite; }
+#screen-opening.playing .chase-dust.d2 { animation-delay: .25s; }
+@keyframes dustPuff {
+  0% { transform: translate3d(0, 0, 0) scale(.5); opacity: .85; }
+  100% { transform: translate3d(-18px, -10px, 0) scale(1.5); opacity: 0; }
+}
 .open-title {
   margin: 96px 0 0;
   font-size: clamp(24px, 8.6vw, 38px);
@@ -460,7 +585,22 @@ button { font-family: inherit; }
   padding: 3px 7px;
   white-space: nowrap;
 }
-.strip-text { font-size: 11px; line-height: 1.35; color: var(--ink-soft); font-weight: 600; }
+.strip-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  line-height: 1.32;
+  color: var(--ink-soft);
+  font-weight: 600;
+  /* Build 5: 「ウサギローと協力してポコ丸を追い込み、アミで捕まえよう‼️」が
+     375px・文字サイズ特大でも枠内に自然に2行で収まるように折り返す */
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+  /* 日本語は文節の切れ目で折り返す（Chromium の auto-phrase。未対応の環境では normal のまま） */
+  word-break: auto-phrase;
+  text-wrap: pretty;
+}
 
 /* ============================ BOARD ============================ */
 .board-wrap { position: relative; margin: 0 auto; width: var(--board); height: var(--board); flex: 0 0 auto; }
@@ -679,7 +819,9 @@ button { font-family: inherit; }
 .meter .pip { width: 8px; height: 8px; border-radius: 50%; background: #ecd9bf; transition: background .2s; }
 .meter .pip.on { background: var(--verm); box-shadow: 0 0 0 1px rgba(226, 87, 46, .18); }
 .meter.danger .pip.on { background: #d33; animation: pulse 1s infinite; }
-.meter-num { font-size: 14px; font-weight: 900; color: var(--verm-dark); min-width: 12px; text-align: right; }
+.meter-num { font-size: 14px; font-weight: 900; color: var(--verm-dark); min-width: 0; text-align: right; }
+/* Build 5: 「4マス」の単位（12言語で“タイル”相当の短い単位） */
+.meter-unit { font-size: 10px; font-weight: 800; color: var(--ink-soft); margin-left: -6px; letter-spacing: .02em; white-space: nowrap; }
 
 .note {
   margin: 8px var(--pad) 0;
@@ -769,6 +911,27 @@ button { font-family: inherit; }
 .card p { margin: 0 0 12px; font-size: 12px; color: var(--ink-soft); font-weight: 600; line-height: 1.5; }
 .card-actions { display: flex; flex-direction: column; gap: 7px; }
 .card-actions .btn { font-size: 15px; padding: 11px 14px; }
+/* ---- Build 5: クリア/結果カードの「📤 シェアする」 ---- */
+.card-actions .btn.share {
+  background: #fffdf7;
+  border: 2px solid #9ec3ea;
+  box-shadow: 0 4px 0 #b9d4ee;
+  color: #245c9c;
+}
+.card-actions .btn.share .btn-main { font-size: calc(15px * var(--ts)); }
+.card-actions .btn.share:active { box-shadow: 0 1px 0 #b9d4ee; }
+/* ---- Build 5: STAGE 25（無料分の最後）をクリアしたときの PRO 案内 ---- */
+.card.promo { box-shadow: 0 22px 50px rgba(60, 30, 10, .4), inset 0 0 0 3px #f5c14b; }
+.card.promo h2 { color: #b4560f; }
+.card.promo p { color: #7a5a35; }
+.card-actions .btn.pro-cta {
+  background: linear-gradient(180deg, #ffd15c, #f5a623);
+  border: 2px solid #d98b13;
+  box-shadow: 0 4px 0 #c47b0d, 0 10px 18px rgba(200, 120, 20, .25);
+  color: #5a3208;
+}
+.card-actions .btn.pro-cta .btn-main { font-size: calc(16px * var(--ts)); letter-spacing: .04em; }
+.card-actions .btn.pro-cta:active { box-shadow: 0 1px 0 #c47b0d; }
 
 /* ============================ SELECT / DAILY ============================ */
 .select-scroll, .rules-scroll, .settings-scroll, .privacy-scroll {
@@ -1039,6 +1202,7 @@ html[data-text-size="xlarge"] { --ts: 1.3; }
 .strip-text { font-size: calc(11px * var(--ts)); }
 .meter-label { font-size: calc(10px * var(--ts)); }
 .meter-num { font-size: calc(14px * var(--ts)); }
+.meter-unit { font-size: calc(10px * var(--ts)); }
 .note p { font-size: calc(12px * var(--ts)); }
 .toast { font-size: calc(12px * var(--ts)); }
 .card h2 { font-size: calc(24px * var(--ts)); }

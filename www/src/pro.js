@@ -112,6 +112,14 @@ export function canPastDaily(pro = store.pro) {
   return FREE_DAILY_PAST > 0 ? true : !!pro;
 }
 
+/**
+ * Build 5: 中級 STAGE 25（無料分＝初級10＋中級15の最後）をクリアした瞬間かどうか。
+ * ここだけ、無料ユーザーに PRO の案内を出してよい。PRO 購入済みなら false（通常どおり次へ）。
+ */
+export function isFreeTierFinale(stage, mode, pro = store.pro) {
+  return mode === "stage" && !!stage && stage.index === FREE_STAGE_COUNT && !pro;
+}
+
 /** ヒントの残り（PRO は無制限 = null） */
 export function hintsLeft(stageId, used, pro = store.pro) {
   if (pro) return null;

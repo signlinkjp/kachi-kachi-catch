@@ -138,9 +138,9 @@ async function clearStage(page, id) {
   const { ctx, page } = await newPage();
   await page.evaluate(() => window.kachi.setLang("ja"));
   const v = await page.evaluate(() => window.kachi.version);
-  check("Build 4 として起動する", v.build === 4 && v.marketing === "1.0.0", JSON.stringify(v));
+  check("Build 4 以降として起動する", v.build >= 4 && v.marketing === "1.0.0", JSON.stringify(v));
   const ver = await page.evaluate(() => document.querySelector("#version-line").textContent);
-  check("設定画面の版が 1.0.0 (4)", /1\.0\.0 \(4\)/.test(ver), ver);
+  check(`設定画面の版が 1.0.0 (${v.build})`, new RegExp(`1\\.0\\.0 \\(${v.build}\\)`).test(ver), ver);
 
   /* ---------------- 2. ホーム（言語チップ廃止・設定ボタン） ---------------- */
   await page.evaluate(() => window.kachi.showTitle());
@@ -217,7 +217,10 @@ async function clearStage(page, id) {
   // (a) クリアカードの「ステージをえらぶ」から選択画面へ
   check("ステージ1をクリアできる", await clearStage(page, "s01"));
   const cardButtons = await page.evaluate(() => Array.from(document.querySelectorAll("#card-actions .btn")).map((b) => b.textContent.trim()));
-  await page.evaluate(() => document.querySelectorAll("#card-actions .btn")[2].click());
+  await page.evaluate(() => {
+    const btn = Array.from(document.querySelectorAll("#card-actions .btn")).find((b) => /(えらぶ|Choose)/.test(b.textContent || ""));
+    (btn || document.querySelectorAll("#card-actions .btn")[2]).click();
+  });
   await page.waitForTimeout(320);
   let s = await stateOf(page);
   check("「ステージをえらぶ」でステージ選択画面へ", s.screen === "select", JSON.stringify({ screen: s.screen, buttons: cardButtons }));
@@ -477,7 +480,10 @@ async function clearStage(page, id) {
       break;
     }
     // 「ステージをえらぶ」→ 触れる → 左上←でホーム → あそぶ で戻る
-    await page.evaluate(() => document.querySelectorAll("#card-actions .btn")[2].click());
+    await page.evaluate(() => {
+    const btn = Array.from(document.querySelectorAll("#card-actions .btn")).find((b) => /(えらぶ|Choose)/.test(b.textContent || ""));
+    (btn || document.querySelectorAll("#card-actions .btn")[2]).click();
+  });
     await page.waitForTimeout(220);
     const s1 = await stateOf(page);
     const reachable = await page.evaluate(() => {

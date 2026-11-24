@@ -1,17 +1,17 @@
 {
   "name": "kachi-kachi-catch",
   "version": "1.0.0",
-  "build": 4,
+  "build": 5,
   "private": true,
   "type": "module",
-  "description": "Kachi Kachi Catch — 5x5 catching puzzle (Capacitor iOS / Build 4)",
+  "description": "Kachi Kachi Catch — 5x5 catching puzzle (Capacitor iOS / Build 5)",
   "license": "UNLICENSED",
   "scripts": {
-    "test": "node --test test/solver.test.mjs test/stages.test.mjs test/daily.test.mjs test/pro.test.mjs test/i18n.test.mjs test/game.test.mjs test/build2.test.mjs test/build3.test.mjs test/build4.test.mjs",
+    "test": "node --test test/solver.test.mjs test/stages.test.mjs test/daily.test.mjs test/pro.test.mjs test/i18n.test.mjs test/game.test.mjs test/build2.test.mjs test/build3.test.mjs test/build4.test.mjs test/build5.test.mjs",
     "serve": "python3 -m http.server 8123",
     "www": "node tools/make-www.mjs",
     "ios:sync": "cap sync ios",
-    "test:e2e": "node tools/e2e-build4.mjs && node tools/e2e-build3.mjs && node tools/e2e-build2.mjs"
+    "test:e2e": "node tools/e2e-build5.mjs && node tools/e2e-build4.mjs && node tools/e2e-build3.mjs && node tools/e2e-build2.mjs"
   },
   "engines": {
     "node": ">=22.0.0"

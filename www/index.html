@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Kachi Kachi Catch Build 4（声の掛け合い・声質交換・ホーム設定ボタン・叩く/逃げるアニメ） -->
+<!-- Kachi Kachi Catch Build 5（追いかけオープニング・シェア・「○マス」表記・STAGE 25 の PRO 案内） -->
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
@@ -17,8 +17,23 @@
     <div class="open-bg"></div>
     <div class="open-sun"></div>
     <div class="open-inner">
-      <img class="open-rabbit" src="assets/rabbit_token.png" alt="" />
-      <img class="open-tanuki" src="assets/tanuki_token.png" alt="" />
+      <!-- Build 5: 臼の杵を持ったウサギローがポコ丸を追いかける導入。
+           transform と opacity だけで動かし、タップは .screen が受ける（オーバーレイは pointer-events: none）。 -->
+      <div class="open-chase" id="open-chase" aria-hidden="true">
+        <span class="chase-runner chase-tanuki" id="chase-tanuki">
+          <img class="open-tanuki" src="assets/tanuki_token.png" alt="" />
+          <i class="chase-sweat">💦</i>
+          <i class="chase-speed s1"></i>
+          <i class="chase-speed s2"></i>
+          <i class="chase-dust d1"></i>
+          <i class="chase-dust d2"></i>
+        </span>
+        <span class="chase-runner chase-usagiro" id="chase-usagiro">
+          <img class="open-rabbit" src="assets/rabbit_token.png" alt="" />
+          <i class="chase-speed s1"></i>
+          <i class="chase-mallet"></i>
+        </span>
+      </div>
       <h1 class="open-title" id="open-title">Kachi Kachi Catch</h1>
       <p class="open-tag" id="open-tag">5×5</p>
     </div>
@@ -171,6 +186,7 @@
       <span class="meter-label" id="meter-label">ポコ丸の逃げ場</span>
       <div class="pips" id="pips"></div>
       <span class="meter-num" id="meter-num">0</span>
+      <span class="meter-unit" id="meter-unit">マス</span>
     </div>
 
     <div class="note" id="note">
@@ -291,7 +307,7 @@
         <span data-i18n="settings.privacy">プライバシーポリシー</span>
         <span class="set-value"><b>›</b></span>
       </div>
-      <p class="version" id="version-line">Kachi Kachi Catch 1.0.0 (4)</p>
+      <p class="version" id="version-line">Kachi Kachi Catch 1.0.0 (5)</p>
     </div>
   </section>
 

@@ -2,7 +2,7 @@
 
 日本昔話「カチカチ山」をモチーフにした、**5×5 の詰みパズル**（年齢制限 4+）。
 ウサギの **ウサギロー（Usagiro）** が十字に網を仕掛け、タヌキの **ポコ丸（Pokomaru）** の逃げ場をふさいで捕まえるゲームです。
-Capacitor iOS アプリ（Bundle ID `jp.signlink.KachiCatch`）。現在は **Build 4**（声の掛け合い・声質交換・ホームの設定ボタン・叩く/逃げるアニメ・ステージ選択画面のフリーズ根絶）です。
+Capacitor iOS アプリ（Bundle ID `jp.signlink.KachiCatch`）。現在は **Build 5**（追いかけオープニング・結果カードのシェア・「○マス」表記・STAGE 25 クリア時の PRO 案内）です。
 
 ---
 
@@ -27,7 +27,7 @@ brief のルールをそのまま実装すると、**「ポコ丸のいるマス
 
 ---
 
-## 収録内容（Build 4）
+## 収録内容（Build 5）
 
 | モード | 内容 | 無料 / PRO |
 | --- | --- | --- |
@@ -40,7 +40,48 @@ PRO は買い切りの非消耗型 **`jp.signlink.KachiCatch.pro`**（StoreKit 2
 
 ---
 
+## Build 5 で足したこと
+
+### 1. オープニングの「追いかけ」アニメ
+
+アプリ起動時（1.6秒・タップで即スキップ・全体は1.75秒でホームへ）、
+ポコ丸が慌てて右から左へ逃げ、**臼の杵を持ったウサギロー**がトテトテ追いかけて横切り、
+最後はホーム画面と同じ2人の位置へ着地する。
+
+- 動かすのは **`transform` と `opacity` だけ**（`will-change: transform, opacity`）。`left` / `width` / `filter` は動かさない。
+- 追いかけの層は `pointer-events: none`。`#screen-opening.playing` のときだけ動き、
+  画面を離れると `playing` が外れて **opacity 0・アニメ停止**（透明な幕も残らない）。
+- 走る速さは横のスピード線・砂煙・汗で表現（これも transform / opacity のみ）。
+
+### 2. クリア・結果カードの「📤 シェアする」
+
+ステージクリア（通常・今日の1問）とタイムアタック終了のカードに1タップのシェアボタン。
+
+- **Web Share API（`navigator.share`）優先** — iOS の WKWebView では標準の共有シートが開く。
+- 非対応環境（PC ブラウザ等）は **クリップボードにコピー＋「結果をコピーしました」トースト**。
+  シートを閉じただけ（`AbortError`）のときは勝手にコピーしない。
+- 文言は12言語（`src/share.js` ＋ `i18n.js` の `share.*`）。日本語の例:
+  `「カチカチ キャッチ」STAGE 49 をクリア！🐇🪵🦝` / `ウサギローとポコ丸の5×5詰みパズル` / `#カチカチキャッチ #KachiKachiCatch`
+
+### 3. 中級 STAGE 25（無料分の最後）クリア時の PRO 案内
+
+無料ユーザーが中級の最後をクリアすると、結果カードが
+**「初級・中級25問を制覇！🎉」＋「上級（5手詰）・激ムズ（7手詰）・タイムアタックが待っています（¥300 買い切り）」**
+になり、先頭に **「PRO を開く」**（金色のボタン）が出る。PRO 購入済みなら従来どおり「つぎのステージ」。
+
+### 4. ゲーム上部の説明文
+
+「ポコ丸の逃げ場をふさごう」→ **「ウサギローと協力してポコ丸を追い込み、アミで捕まえよう‼️」**（12言語も同じ意味に更新）。
+375px / 393px・文字サイズ特大でも枠内に自然な2行で収まる（`word-break: auto-phrase` で文節折り返し）。
+
+### 5. 「ポコ丸の逃げ場 ○マス」
+
+下部メーターの数字に単位を追加（日本語「4マス」、英語「4 tiles」…の12言語）。
+
+---
+
 ## Build 4 で直したこと（実機フィードバック4点＋ステージ選択画面のフリーズ）
+
 
 ### 0. 「ステージ選択画面で何も押せない・スクロールできない・←が効かない」（実機フリーズの真因）
 
@@ -117,6 +158,9 @@ PRO は買い切りの非消耗型 **`jp.signlink.KachiCatch.pro`**（StoreKit 2
 
 ### E2E（`npm run test:e2e`）
 
+- `tools/e2e-build5.mjs`（46チェック）: 追いかけオープニング（1.6秒・タップスキップ・終了後は完全非表示・操作を邪魔しない）、
+  上部の新文言と「○マス」（375/393 × 標準/大/特大の収まり）、シェア（共有シート／クリップボード＋トースト・今日の1問・TA）、
+  STAGE 25 の PRO 案内（無料/PRO）、ホームと1手打ちの回帰。
 - `tools/e2e-build4.mjs`（33チェック）: ステージ選択画面の導線（クリア→選ぶ→スクロール→激ムズ→←）、声の排他キュー、叩く/逃げるアニメ、深い盤面のタップ時間、8ステージ往復。
 - `tools/e2e-build3.mjs`（30チェック）: 連続クリア・やりなおし・設定往復・連打・`pointerdown` のみ・`pointercancel`・`click` のみ・
   例外注入（アニメ/音）・上級面のタップ時間・乱打・声の同時再生と BGM ダッキング・12言語のラベル・全体像の見切れゼロ。
@@ -133,7 +177,7 @@ PRO は買い切りの非消耗型 **`jp.signlink.KachiCatch.pro`**（StoreKit 2
 - `tanukiReply()` → ポコ丸AI（最も長く生き残る手を選ぶ）
 - `principalLine()` / `src/solutions.js` → 全170問の最善手順を事前計算（起動時の計算ゼロ）
 
-### 検証（`npm test`・329テスト）
+### 検証（`npm test`・344テスト）
 
 - ルール（十字5マス・8方向の逃げ道・タップ不可マス）の単体テスト
 - ソルバーと**素朴実装（メモ化なしの配列版）**の総当たり照合
@@ -213,10 +257,10 @@ python3 tools/make_icon.py        # アプリアイコン1024・スプラッシ�
 
 ---
 
-## iOS（Build 4）
+## iOS（Build 5）
 
 - Bundle ID: `jp.signlink.KachiCatch` / 表示名: `Kachi Kachi Catch`
-- `MARKETING_VERSION = 1.0.0` / `CURRENT_PROJECT_VERSION = 4`（ワークフローが自動で読み取るので貼り替え不要）
+- `MARKETING_VERSION = 1.0.0` / `CURRENT_PROJECT_VERSION = 5`（ワークフローが自動で読み取るので貼り替え不要）
 - `TARGETED_DEVICE_FAMILY = "1,2"`（iPhone & iPad）
 - `AppDelegate.swift`: `StoreKitPlugin`（StoreKit 2・`jp.signlink.KachiCatch.pro`）、`KachiHapticsPlugin`、`KachiAudioPlugin`（割り込み終了・メディアサービスリセット・イヤホン抜き差しで AudioSession を起こし直す）
 - アイコン: `assets/kachi-appicon-1024.png` → `ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png`（1024・RGB・透過なし）

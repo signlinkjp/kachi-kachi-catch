@@ -14,6 +14,7 @@ import {
   stringsOf,
 } from "./i18n.js";
 import { store, TA_DURATIONS, normalizeTextSize, normalizeTaDuration } from "./storage.js";
+import { shareTextFor, shareButtonLabel } from "./share.js";
 import {
   sfx,
   unlockAudio,
@@ -44,13 +45,14 @@ import {
   getProduct,
   isStoreAvailable,
   devUnlock,
+  isFreeTierFinale,
 } from "./pro.js";
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const VERSION = "1.0.0";
-const BUILD = 4;
+const BUILD = 5;
 
 const app = {
   screen: "opening",
@@ -62,6 +64,8 @@ const app = {
   timers: new Set(),
   ta: null,
   product: null,
+  /** 直近のシェア（検証用）: { kind, text, via, at } */
+  lastShare: null,
 };
 
 /* ---------------- 操作ロックの安全装置 ----------------
@@ -198,6 +202,11 @@ function nav(screen) {
     if (app.ta) stopTimeAttack();
     if (app.screen === "game") resetInteraction();
   }
+  // オープニングの追いかけアニメは「オープニング中」だけ動かす。
+  // 離れたら .playing が外れ、chase の要素は opacity 0 / animation なしに戻る
+  // （タップを受けない・描画も残らない）。
+  const opening = $("#screen-opening");
+  if (opening) opening.classList.toggle("playing", screen === "opening");
   // どの画面へ移っても、前の画面のモーダルは残さない（タップを食べる透明な幕を作らない）
   closeOverlays();
   app.screen = screen;
@@ -344,6 +353,8 @@ function paintMeter(game, optsMask) {
   }
   Array.from(pips.children).forEach((el, k) => el.classList.toggle("on", k < total));
   $("#meter-num").textContent = String(total);
+  const unit = $("#meter-unit");
+  if (unit) unit.textContent = app.t("stage.escapeUnit");
   $(".meter").classList.toggle("danger", total <= 2);
   $("#meter-label").textContent = app.t("stage.escape", { name: app.t("char.tanuki") });
 }
@@ -970,6 +981,73 @@ function showHint() {
   return cell;
 }
 
+/* ---------------- シェア（Build 5） ---------------- */
+/**
+ * 結果カードの「シェアする」。
+ * - iOS の WKWebView では navigator.share() が標準の共有シートを開く（タップから直接呼ぶ）
+ * - 使えない環境（PC ブラウザ等）ではクリップボードにコピーしてトーストで知らせる
+ * 文言は src/share.js（12言語は i18n.js の share.*）。
+ */
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {}
+  // クリップボード API が無い/拒否されたときの手（WKWebView でもユーザーのタップ中なら通る）
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    ta.style.top = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return !!ok;
+  } catch {
+    return false;
+  }
+}
+
+/** 実際に共有する。返り値: "share" | "clipboard" | "cancelled" | "failed" */
+async function shareResult(kind, data = {}) {
+  const text = shareTextFor(app.t, kind, { date: dateKey(), ...data });
+  app.lastShare = { kind, text, via: null, at: Date.now() };
+  let via = "";
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: app.t("app.title"), text });
+        via = "share";
+      } catch (e) {
+        const name = e && e.name;
+        // ユーザーがシートを閉じただけのときは、勝手にコピーしない
+        if (name === "AbortError" || name === "NotAllowedError" || name === "DataError") via = "cancelled";
+      }
+    }
+  } catch {}
+  if (via === "cancelled") {
+    app.lastShare.via = via;
+    return via;
+  }
+  if (!via) {
+    const ok = await copyToClipboard(text);
+    via = ok ? "clipboard" : "failed";
+    showToast(app.t(ok ? "share.copied" : "share.failed"));
+  }
+  app.lastShare.via = via;
+  return via;
+}
+
+function priceLabel() {
+  return (app.product && app.product.displayPrice) || "\u00a5300";
+}
+
 /* ---------------- クリア / 失敗カード ---------------- */
 function cardButton(label, sub, cls, onClick) {
   const b = document.createElement("button");
@@ -983,18 +1061,42 @@ function showClear(game, isNew) {
   const t = app.t;
   const stage = game.stage;
   const perfect = game.movesUsed === stage.par;
+  const s = app.session;
+  const isStageMode = !!s && s.mode === "stage";
+  // Build 5: 中級 STAGE 25（無料分の最後）をクリアした無料ユーザーへ、達成感に寄り添う PRO 案内
+  const promoTier = isFreeTierFinale(stage, s && s.mode, isPro());
+  const card = $("#card");
+  if (card) card.classList.toggle("promo", promoTier);
   $("#card-img").innerHTML = `<img src="assets/rabbit_face.png" alt="" />`;
-  $("#card-title").textContent = t("game.clearTitle");
-  $("#card-text").textContent = `${t("game.clearText", { n: game.movesUsed })}${perfect ? " " + t("game.clearPerfect") : ""}`;
+  if (promoTier) {
+    $("#card-title").textContent = t("pro.clear25Title");
+    $("#card-text").textContent = t("pro.clear25Text", { price: priceLabel() });
+  } else {
+    $("#card-title").textContent = t("game.clearTitle");
+    $("#card-text").textContent = `${t("game.clearText", { n: game.movesUsed })}${perfect ? " " + t("game.clearPerfect") : ""}`;
+  }
   const actions = $("#card-actions");
   actions.innerHTML = "";
-  const s = app.session;
-  const idx = STAGES.indexOf(stage);
-  const next = s.mode === "stage" && idx >= 0 ? STAGES[idx + 1] : null;
-  if (next) {
-    const playable = canPlayStage(next);
+  if (promoTier) {
+    // まず「PRO を開く」（自然に目立つ位置）。その下にシェアと通常の導線
+    actions.appendChild(cardButton(t("pro.clear25Btn"), "", "pro-cta", () => openProSheet()));
+  } else {
+    const idx = STAGES.indexOf(stage);
+    const next = isStageMode && idx >= 0 ? STAGES[idx + 1] : null;
+    if (next) {
+      const playable = canPlayStage(next);
+      actions.appendChild(
+        cardButton(t("game.next"), t("stage.stageNo", { n: next.index }), "", () => (playable ? openStage(next.id) : openProSheet()))
+      );
+    }
+  }
+  if (isStageMode) {
     actions.appendChild(
-      cardButton(t("game.next"), t("stage.stageNo", { n: next.index }), "", () => (playable ? openStage(next.id) : openProSheet()))
+      cardButton(shareButtonLabel(t), "", "share", () => shareResult("stage", { stage: t("stage.stageNo", { n: stage.index }), moves: game.movesUsed }))
+    );
+  } else {
+    actions.appendChild(
+      cardButton(shareButtonLabel(t), "", "share", () => shareResult("daily", { date: (s && s.dailyKey) || dateKey() }))
     );
   }
   actions.appendChild(cardButton(t("game.again"), "", "ghost", () => openStage(stage.id, { mode: s.mode, dailyKey: s.dailyKey })));
@@ -1184,6 +1286,9 @@ function endTimeAttack() {
     $("#overlay").classList.remove("show");
     startTimeAttack(duration);
   }));
+  actions.appendChild(
+    cardButton(shareButtonLabel(t), "", "share", () => shareResult("ta", { seconds: duration, score: ta.score }))
+  );
   actions.appendChild(cardButton(t("ta.pickOther"), "", "ghost", () => {
     $("#overlay").classList.remove("show");
     app.ta = null;
@@ -1442,7 +1547,8 @@ function startOpening() {
   $("#open-tag").textContent = app.t("app.tagline");
   $("#open-skip").textContent = app.t("opening.skip");
   clearTimeout(openingTimer);
-  openingTimer = setTimeout(finishOpening, 1900);
+  // Build 5: 追いかけアニメは 1.6 秒。全体は 1.75 秒でホームへ（タップで即スキップ）
+  openingTimer = setTimeout(finishOpening, 1750);
 }
 function finishOpening() {
   clearTimeout(openingTimer);
@@ -1706,6 +1812,15 @@ function exposeApi() {
       nav("privacy");
     },
     openPro: () => openProSheet(),
+    /** Build 5: シェア（検証・実画面用） */
+    shareText: (kind, data) => shareTextFor(app.t, kind, data || {}),
+    share: (kind, data) => shareResult(kind, data || {}),
+    lastShare: () => app.lastShare,
+    cardActions: () =>
+      Array.from(document.querySelectorAll("#card-actions .btn")).map((b) => ({
+        label: (b.textContent || "").trim(),
+        cls: typeof b.className === "string" ? b.className : "",
+      })),
     closeSheets: () => closeAllSheets(),
     openStage: (id) => openStage(id),
     openDaily: () => openStage(dailyPuzzleFor(new Date()), { mode: "daily", dailyKey: dateKey() }),
@@ -1714,6 +1829,8 @@ function exposeApi() {
       if (p) openStage(p.stage, { mode: "daily", dailyKey: p.key });
     },
     startTa: (seconds) => startTimeAttack(seconds),
+    /** 検証用: タイムアタックを即終了させてリザルトカードを出す */
+    endTa: () => endTimeAttack(),
     openTaSheet: () => openTaSheet(),
     taDurations: () => TA_DURATIONS.slice(),
     setPro: (v) => {
