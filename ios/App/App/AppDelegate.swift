@@ -86,7 +86,6 @@ final class KachiBridgeViewController: CAPBridgeViewController {
         if let webView = self.webView {
             webView.configuration.mediaTypesRequiringUserActionForPlayback = []
             webView.configuration.allowsInlineMediaPlayback = true
-            webView.allowsInlineMediaPlayback = true
         }
     }
 }
