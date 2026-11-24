@@ -82,13 +82,12 @@ export class Game {
     }
 
     // タヌキの応手（残り手数に合わせた深さで評価。同点は動く方を優先）
+    // ここで「この局面がまだ詰むか」をもう一度解くと、深い面で 1手あたり数百ms かかる。
+    // ゲームの進行には要らないので解かない（重さ = 操作の引っかかりの原因だった）。
     const limit = Math.max(1, Math.min(this.remaining, 5));
     const next = tanukiReply({ traps: trapsAfter, pos: tanukiFrom }, this.geom, { limit });
     this.state = { traps: trapsAfter, pos: next };
     this.history.push({ cell, flipped, tanukiFrom, tanukiTo: next, caught: false });
-
-    const sol = solveState(this.state, this.geom, { limit: this.remaining, wantMoves: false });
-    const distance = sol ? sol.distance : null;
 
     if (this.remaining <= 0) {
       // 手数切れ: まだ詰んでいなければ失敗
@@ -100,7 +99,7 @@ export class Game {
       tanukiTo: next,
       caught: false,
       status: this.status,
-      distance,
+      distance: null,
       outOfMoves: this.remaining <= 0,
     };
   }

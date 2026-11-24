@@ -77,6 +77,18 @@ final class KachiBridgeViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(KachiHapticsPlugin())
         bridge?.registerPluginInstance(KachiAudioPlugin())
     }
+
+    /// WKWebView は既定で「ユーザー操作が無いと音を鳴らせない」設定になっている。
+    /// ゲームの操作音・ボイスはタップの直後に鳴らすので、ここを空にして
+    /// タップの合図が途切れても（非同期のあとでも）鳴らせるようにしておく。
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        if let webView = self.webView {
+            webView.configuration.mediaTypesRequiringUserActionForPlayback = []
+            webView.configuration.allowsInlineMediaPlayback = true
+            webView.allowsInlineMediaPlayback = true
+        }
+    }
 }
 
 /* 音のための小さなブリッジ。
@@ -88,8 +100,123 @@ public class KachiAudioPlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "KachiAudio"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "activate", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "status", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "status", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "playVoice", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "stopVoice", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "preloadVoices", returnType: CAPPluginReturnPromise)
     ]
+
+    /* ------------------------------------------------------------------
+       ボイス（ウサギロー・ポコ丸）は AVAudioPlayer で直接鳴らす。
+
+       WKWebView の Web Audio は「ユーザー操作と同じ瞬間」でないと
+       AudioContext が起きず、fetch→decodeAudioData をはさむと
+       実機 iPhone では声が出ないことがあった。
+       AVAudioPlayer なら AudioSession を都度起こすだけで必ず鳴り、
+       BGM（Web Audio）とは別経路なので声が埋もれない。
+       ------------------------------------------------------------------ */
+    private var voicePlayers: [String: AVAudioPlayer] = [:] // who -> 再生中
+    private var voiceCache: [String: AVAudioPlayer] = [:] // path -> 準備済み
+    private var voiceGeneration = 0
+
+    /// `assets/voices/ja/usagiro-start1.mp3` のような相対パスを実ファイルに解決する
+    static func voiceURL(_ relative: String) -> URL? {
+        var rel = relative
+        if let q = rel.firstIndex(of: "?") { rel = String(rel[..<q]) }
+        if let h = rel.firstIndex(of: "#") { rel = String(rel[..<h]) }
+        while rel.hasPrefix("/") { rel.removeFirst() }
+        guard !rel.isEmpty, !rel.contains("..") else { return nil }
+        let base = Bundle.main.bundlePath as NSString
+        let candidates = ["public/\(rel)", rel, "www/\(rel)"]
+        for candidate in candidates {
+            let full = base.appendingPathComponent(candidate)
+            if FileManager.default.fileExists(atPath: full) {
+                return URL(fileURLWithPath: full)
+            }
+        }
+        return nil
+    }
+
+    /// 声を1つ鳴らす。同じ話者の前の声は止める（重ならない）。
+    @objc public func playVoice(_ call: CAPPluginCall) {
+        let path = call.getString("path") ?? ""
+        let who = call.getString("who") ?? "voice"
+        let volume = Float(call.getFloat("volume") ?? 1.0)
+        guard !path.isEmpty else {
+            call.resolve(["ok": false, "reason": "empty path"])
+            return
+        }
+        guard let url = KachiAudioPlugin.voiceURL(path) else {
+            call.resolve(["ok": false, "reason": "missing file", "path": path])
+            return
+        }
+        AppDelegate.activateAudioSession()
+        DispatchQueue.main.async {
+            self.voiceGeneration += 1
+            if let playing = self.voicePlayers[who] {
+                playing.stop()
+                self.voicePlayers[who] = nil
+            }
+            do {
+                let player: AVAudioPlayer
+                if let cached = self.voiceCache[path] {
+                    player = cached
+                } else {
+                    player = try AVAudioPlayer(contentsOf: url)
+                    self.voiceCache[path] = player
+                }
+                player.stop()
+                player.currentTime = 0
+                player.numberOfLoops = 0
+                player.volume = max(0, min(1, volume))
+                player.prepareToPlay()
+                guard player.play() else {
+                    call.resolve(["ok": false, "reason": "play returned false"])
+                    return
+                }
+                self.voicePlayers[who] = player
+                call.resolve(["ok": true, "duration": Double(player.duration), "path": path])
+            } catch {
+                call.resolve(["ok": false, "reason": "\(error.localizedDescription)"])
+            }
+        }
+    }
+
+    /// 声を止める（who を省略すると全部）
+    @objc public func stopVoice(_ call: CAPPluginCall) {
+        let who = call.getString("who")
+        DispatchQueue.main.async {
+            for (key, player) in self.voicePlayers {
+                if who == nil || who == key {
+                    player.stop()
+                    self.voicePlayers.removeValue(forKey: key)
+                }
+            }
+            call.resolve(["ok": true])
+        }
+    }
+
+    /// 声のファイルを先に読み込んでおく（最初のタップから間を空けずに鳴らす）
+    @objc public func preloadVoices(_ call: CAPPluginCall) {
+        let paths = call.getArray("paths", String.self) ?? []
+        // キャッシュは main だけで触る（再生側との競合を作らない）
+        DispatchQueue.main.async {
+            var loaded = 0
+            for path in paths {
+                if self.voiceCache[path] != nil {
+                    loaded += 1
+                    continue
+                }
+                guard let url = KachiAudioPlugin.voiceURL(path) else { continue }
+                if let player = try? AVAudioPlayer(contentsOf: url) {
+                    player.prepareToPlay()
+                    self.voiceCache[path] = player
+                    loaded += 1
+                }
+            }
+            call.resolve(["ok": true, "loaded": loaded])
+        }
+    }
 
     override public func load() {
         AppDelegate.activateAudioSession()
@@ -124,7 +251,8 @@ public class KachiAudioPlugin: CAPPlugin, CAPBridgedPlugin {
         let session = AVAudioSession.sharedInstance()
         call.resolve([
             "category": session.category.rawValue,
-            "active": session.isOtherAudioPlaying
+            "active": session.isOtherAudioPlaying,
+            "voices": self.voicePlayers.count
         ])
     }
 

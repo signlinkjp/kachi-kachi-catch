@@ -137,16 +137,17 @@ export function isLegalMove(state, cell, geom) {
  * 指定手数以内に必ず詰むかを判定し、最短手数と最善手を返す。
  * @returns null | {distance:number, moves:{cell:number,distance:number}[]}
  */
-export function solveState(state, geom, { limit = MAX_MOVES, wantMoves = true } = {}) {
+export function solveState(state, geom, { limit = MAX_MOVES, wantMoves = true, memo = null } = {}) {
   const cells = playableCells(geom);
-  const memo = new Map(); // (traps,pos,depth) -> 手数 or Infinity
+  // memo は呼び出し側で共有できる（タヌキの応手を比べるときに同じ局面を何度も解かない）
+  const table = memo || new Map(); // (traps,pos,depth) -> 手数 or Infinity
 
   function dist(traps, pos, depth) {
     const opts = tanukiOptionsMask(traps, pos, geom);
     if (opts === 0) return 0;
     if (depth <= 0) return Infinity;
     const key = ((traps >>> 0) * 32 + pos) * 16 + depth;
-    const hit = memo.get(key);
+    const hit = table.get(key);
     if (hit !== undefined) return hit;
 
     let best = Infinity;
@@ -178,7 +179,7 @@ export function solveState(state, geom, { limit = MAX_MOVES, wantMoves = true } 
         if (best === 1) break;
       }
     }
-    memo.set(key, best);
+    table.set(key, best);
     return best;
   }
 
@@ -231,8 +232,10 @@ export function exactDistance(state, geom, { maxLimit = MAX_MOVES } = {}) {
 export function tanukiReply(state, geom, { rng = Math.random, limit = 5 } = {}) {
   const opts = bits(tanukiOptionsMask(state.traps, state.pos, geom));
   if (opts.length === 0) return null;
+  // 9方向の候補を同じ memo で解く（局面が重なるので、探し直しがなくなる）
+  const memo = new Map();
   const scored = opts.map((pos) => {
-    const r = solveState(makeState(state.traps, pos), geom, { limit, wantMoves: false });
+    const r = solveState(makeState(state.traps, pos), geom, { limit, wantMoves: false, memo });
     return { pos, d: r ? r.distance : 999, moved: pos === state.pos ? 0 : 1 };
   });
   const max = Math.max(...scored.map((s) => s.d));

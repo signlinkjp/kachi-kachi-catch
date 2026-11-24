@@ -1,5 +1,5 @@
 /* ============================================================
-   Kachi Kachi Catch — Build 2 controller
+   Kachi Kachi Catch — Build 3 controller
    ============================================================ */
 import { STAGES, DIFFICULTIES, PAR_OF, stageById, stagesOf } from "./stages.js";
 import { DAILY } from "./daily.js";
@@ -25,9 +25,10 @@ import {
   bootAudio,
   playClip,
   stopVoice,
+  preloadVoices,
   audioDebug,
 } from "./audio.js";
-import { voiceFor } from "./voices.js";
+import { voiceFor, allVoiceUrls } from "./voices.js";
 import { haptics } from "./haptics.js";
 import {
   PRODUCT_ID,
@@ -49,41 +50,50 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const VERSION = "1.0.0";
-const BUILD = 2;
-/** タップ1回のロックが続く最大時間。これを過ぎたら「古いロック」とみなして解除する */
-const TAP_LOCK_MS = 2200;
+const BUILD = 3;
 
 const app = {
   screen: "opening",
   lang: "ja",
   t: makeT("ja"),
   session: null, // {mode, stage, game, dailyKey}
-  busy: false,
-  busySince: 0,
+  /** ステージ世代。ステージを移るたびに増える（古い処理はこれを比べて黙って抜ける） */
   epoch: 0,
   timers: new Set(),
   ta: null,
   product: null,
 };
 
-/* ---------------- 操作ロックの安全装置 ---------------- */
+/* ---------------- 操作ロックの安全装置 ----------------
+   Build 3 では「タップを待たせるロック」そのものを廃止した。
+   手は tapped の瞬間に同期で決まり、アニメーションは投げっぱなしにする。
+   だから待ち行列が残ってマスが押せなくなる状態が原理的に作れない。
+   ここに残るのは「ステージを移ったときに見た目を畳む」処理だけ。
+*/
+/** 直前のタップ（同じマスの二度打ち・合成 click の重複をはじく） */
+let tapSeq = 0;
+let lastTapAt = 0;
+let lastTapCell = -1;
+let handledPointer = null;
 /**
  * ステージを移るとき・画面を離れるときに、進行中のアニメーションとタイマーを
- * すべて捨ててロックを解除する。ここが漏れると「マスが押せない」状態になる。
+ * すべて捨てて見た目を初期状態に戻す。
  */
 function resetInteraction() {
   app.epoch += 1;
   clearLater();
-  app.busy = false;
-  app.busySince = 0;
   finishHop();
   stopVoice();
-  $$(".cell.preview, .cell.hint").forEach((c) => c.classList.remove("preview", "hint"));
-  $$("#board .cell.flip, #board .cell.netted").forEach((c) => c.classList.remove("flip", "netted"));
+  handledPointer = null;
+  $$(".cell.preview, .cell.hint, #board .cell.flip, #board .cell.netted").forEach((c) =>
+    c.classList.remove("preview", "hint", "flip", "netted")
+  );
   const usa = $("#usagiro");
   if (usa) usa.classList.remove("swing");
   const tanuki = $("#tanuki");
   if (tanuki) tanuki.classList.remove("sweating", "wobble", "caught");
+  lastTapCell = -1;
+  lastTapAt = 0;
 }
 
 /** ステージをまたいで残ってはいけないタイマー（setTimeout はここに集める） */
@@ -101,11 +111,29 @@ function clearLater() {
 }
 
 /** ボイス（設定OFF・音が出せないときは静かに何もしない） */
-function speak(who, situation) {
+const voiceState = { lastAt: new Map() };
+
+/**
+ * 声を鳴らす。
+ * - who ごとに別の声（ウサギローの声とポコ丸の声は重なってよい）
+ * - throttle: 同じ場面の声を続けて鳴らさない（語尾が切れないように）
+ * - delay: 他の声とぶつからないように少し遅らせる
+ */
+function speak(who, situation, opts = {}) {
   try {
     const v = voiceFor(app.lang, who, situation);
-    if (v) playClip(v.url);
-  } catch {}
+    if (!v) return null;
+    const key = `${who}:${situation}`;
+    const delay = opts.delay || 0;
+    const throttle = opts.throttle || 0;
+    if (!delay && throttle && Date.now() - (voiceState.lastAt.get(key) || 0) < throttle) return v;
+    voiceState.lastAt.set(key, Date.now());
+    if (delay) later(() => playClip(v.url, { who }), delay);
+    else playClip(v.url, { who });
+    return v;
+  } catch {
+    return null;
+  }
 }
 
 /* ---------------- 言語 ---------------- */
@@ -127,6 +155,10 @@ function setLang(code, { persist = true } = {}) {
   if (persist) store.setSetting("lang", next);
   document.documentElement.lang = next;
   relocalize();
+  // 言語を変えたら、その言語の声を先に読み込んでおく
+  try {
+    preloadVoices(allVoiceUrls(next));
+  } catch {}
 }
 
 function applyI18n(root = document) {
@@ -222,21 +254,53 @@ function paintBoard(game) {
 }
 
 function cellCenter(boardIdx) {
+  const geom = boardGeometry();
+  return geom.cells[boardIdx] || { x: 0, y: 0, s: 56 };
+}
+
+/**
+ * マスの位置はステージが変わるだけでは動かない。
+ * タップのたびに25マス分 getBoundingClientRect を呼ぶと（iOS では）レイアウトが詰まるので、
+ * 盤面が組み終わったとき・回転や文字サイズが変わったときだけ測り直す。
+ */
+let cellGeom = null;
+function measureCells() {
   const board = $("#board");
   const wrap = $("#board-wrap");
-  const cell = board.children[boardIdx];
+  if (!board || !wrap || board.children.length !== 25) return null;
   const wrapRect = wrap.getBoundingClientRect();
-  const r = cell.getBoundingClientRect();
-  return {
-    x: r.left - wrapRect.left,
-    y: r.top - wrapRect.top,
-    s: r.width,
+  const cells = new Array(25);
+  for (let i = 0; i < 25; i++) {
+    const r = board.children[i].getBoundingClientRect();
+    cells[i] = { x: r.left - wrapRect.left, y: r.top - wrapRect.top, s: r.width };
+  }
+  const token = $("#tanuki");
+  cellGeom = {
+    cells,
+    w: wrapRect.width,
+    h: wrapRect.height,
+    token: token ? token.getBoundingClientRect().width || 56 : 56,
   };
+  return cellGeom;
+}
+function boardGeometry() {
+  const wrap = $("#board-wrap");
+  if (!wrap) return { cells: [], token: 56 };
+  const w = wrap.getBoundingClientRect().width;
+  if (!cellGeom || cellGeom.cells.length !== 25 || Math.abs(cellGeom.w - w) > 0.5) measureCells();
+  return cellGeom || { cells: [], token: 56 };
+}
+/** 画面の大きさ・向き・文字サイズが変わったら測り直して置き直す */
+function refreshBoardLayout() {
+  cellGeom = null;
+  if (!app.session) return;
+  measureCells();
+  placeToken(app.session.game);
 }
 
 function tokenSize() {
-  const el = $("#tanuki");
-  return el.getBoundingClientRect().width || 56;
+  const g = boardGeometry();
+  return g.token || 56;
 }
 
 function placeToken(game) {
@@ -261,14 +325,19 @@ function paintMeter(game, optsMask) {
 }
 
 /* ---------------- アニメーション ---------------- */
+/* 見た目のアニメーションはすべて投げっぱなし。
+   ゲームの状態はタップした瞬間に決まっているので、待つ必要はない。
+   途中で次のタップが来たら、前のアニメは畳んで新しい位置へ飛ぶ。 */
 let hopAnim = null;
 
 function setTokenTransform(x, y, scale = 1) {
-  $("#tanuki").style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+  const el = $("#tanuki");
+  if (el) el.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
 }
 
-async function hop(game, from, to) {
+function startHop(from, to) {
   const tanuki = $("#tanuki");
+  if (!tanuki || to == null) return;
   const size = tokenSize();
   const a = cellCenter(from);
   const b = cellCenter(to);
@@ -276,32 +345,38 @@ async function hop(game, from, to) {
   const ay = a.y + (a.s - size) / 2;
   const bx = b.x + (b.s - size) / 2;
   const by = b.y + (b.s - size) / 2;
+  finishHop();
   setTokenTransform(ax, ay);
+  puff(ax, ay, size);
   sfx.hop();
   haptics.hop();
-  puff(ax, ay, size);
   const dx = bx - ax;
   const dy = by - ay;
-  if (hopAnim) {
-    try {
-      hopAnim.cancel();
-    } catch {}
-  }
-  hopAnim = tanuki.animate(
-    [
-      { transform: `translate(${ax}px,${ay}px) scale(1,1)` },
-      { transform: `translate(${ax + dx * 0.28}px,${ay + dy * 0.28 - size * 0.42}px) scale(.94,1.1)`, offset: 0.3 },
-      { transform: `translate(${ax + dx * 0.62}px,${ay + dy * 0.62 - size * 0.5}px) scale(1.06,.94)`, offset: 0.62 },
-      { transform: `translate(${bx}px,${by}px) scale(1,1)` },
-    ],
-    { duration: 340, easing: "cubic-bezier(.32,.9,.36,1)" }
-  );
   try {
-    await hopAnim.finished;
-  } catch {}
-  hopAnim = null;
-  setTokenTransform(bx, by);
-  puff(bx, by, size);
+    if (typeof tanuki.animate !== "function") throw new Error("no animate");
+    hopAnim = tanuki.animate(
+      [
+        { transform: `translate(${ax}px,${ay}px) scale(1,1)` },
+        { transform: `translate(${ax + dx * 0.28}px,${ay + dy * 0.28 - size * 0.4}px) scale(.95,1.08)`, offset: 0.3 },
+        { transform: `translate(${ax + dx * 0.62}px,${ay + dy * 0.62 - size * 0.48}px) scale(1.05,.95)`, offset: 0.62 },
+        { transform: `translate(${bx}px,${by}px) scale(1,1)` },
+      ],
+      { duration: 300, easing: "cubic-bezier(.32,.9,.36,1)" }
+    );
+    hopAnim.onfinish = () => {
+      hopAnim = null;
+      setTokenTransform(bx, by);
+      puff(bx, by, size);
+    };
+    hopAnim.oncancel = () => {
+      hopAnim = null;
+    };
+  } catch {
+    // アニメーションが使えなくても、位置は必ず合わせる
+    hopAnim = null;
+    setTokenTransform(bx, by);
+    puff(bx, by, size);
+  }
 }
 
 function finishHop() {
@@ -342,18 +417,19 @@ function usagiroSwing(cellIdx) {
   setTimeout(() => el.classList.remove("swing"), 340);
 }
 
-async function flipAnimation(cells, game) {
+function flipPulse(cells) {
   const board = $("#board");
+  if (!board) return;
   cells.forEach((i, k) => {
-    if (game.geom.walls[i]) return;
-    setTimeout(() => {
-      const cell = board.children[i];
+    const cell = board.children[i];
+    if (!cell || cell.classList.contains("is-wall")) return;
+    later(() => {
       cell.classList.add("flip", "netted");
-      setTimeout(() => cell.classList.remove("flip", "netted"), 320);
-    }, k * 26);
+      later(() => {
+        cell.classList.remove("flip", "netted");
+      }, 300);
+    }, k * 22);
   });
-  await wait(26 * cells.length + 130);
-  paintBoard(game);
 }
 
 function spawnSparks(cellIdx) {
@@ -430,10 +506,18 @@ function setNote(key, mood = "") {
 }
 
 /** ポコ丸がしゃべる（吹き出し＋ボイス）。situation: start / taunt / panic / caught / escape */
-function tanukiSpeak(situation, mood = "") {
+function tanukiSpeak(situation, mood = "", opts = {}) {
   const v = voiceFor(app.lang, "pokomaru", situation);
-  setNote((v && NOTE_KEY_FOR_VOICE[v.key]) || "note.start", mood);
-  if (v) playClip(v.url);
+  const delay = opts.delay || 0;
+  if (delay) {
+    later(() => setNote((v && NOTE_KEY_FOR_VOICE[v.key]) || "note.start", mood), delay);
+  } else {
+    setNote((v && NOTE_KEY_FOR_VOICE[v.key]) || "note.start", mood);
+  }
+  if (v) {
+    if (delay) later(() => playClip(v.url, { who: "pokomaru" }), delay);
+    else playClip(v.url, { who: "pokomaru" });
+  }
 }
 
 function reactNote(game) {
@@ -443,6 +527,51 @@ function reactNote(game) {
 }
 
 /* ---------------- タイトル ---------------- */
+const HERO_RATIO = 1400 / 840;
+
+/**
+ * ホームのキャラ絵を「木槌の先端からポコ丸のしっぽまで」全体が入る大きさに置く。
+ * 幅と高さの両方を見て小さいほうに合わせるので、どの機種・文字サイズでも見切れない。
+ * 名前ラベルは画像内の頭の位置（％）に合わせ、画面の端ではみ出さないよう寄せる。
+ */
+function layoutHero() {
+  const hero = $(".hero");
+  const stage = $("#hero-stage");
+  if (!hero || !stage) return;
+  const vw = document.documentElement.clientWidth || 393;
+  const availW = Math.min(hero.clientWidth || vw, vw);
+  const availH = hero.clientHeight || availW / HERO_RATIO;
+  let w = Math.min(availW, availH * HERO_RATIO);
+  w = Math.max(140, Math.floor(w));
+  const h = Math.round(w / HERO_RATIO);
+  stage.style.width = w + "px";
+  stage.style.height = h + "px";
+  placeCharName($("#label-rabbit"), 0.305, 0.105, w);
+  placeCharName($("#label-tanuki"), 0.735, 0.095, w);
+}
+
+function placeCharName(el, xPct, yPct, stageW) {
+  if (!el) return;
+  const stage = el.parentElement;
+  if (!stage) return;
+  const vw = document.documentElement.clientWidth || 393;
+  const ts = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ts")) || 1;
+  const base = Math.max(14, stageW * 0.055) * Math.min(ts, 1.15);
+  el.style.fontSize = base.toFixed(1) + "px";
+  let width = el.getBoundingClientRect().width;
+  const maxW = Math.max(120, Math.min(stageW * 0.52, vw * 0.5));
+  if (width > maxW) {
+    el.style.fontSize = Math.max(11, base * (maxW / width)).toFixed(1) + "px";
+    width = el.getBoundingClientRect().width;
+  }
+  const half = Math.min(width, maxW) / 2;
+  const rect = stage.getBoundingClientRect();
+  let cx = rect.left + rect.width * xPct;
+  cx = Math.max(half + 5, Math.min(vw - half - 5, cx));
+  el.style.left = Math.round(cx - rect.left) + "px";
+  el.style.top = Math.round(rect.height * yPct) + "px";
+}
+
 function nextStageToPlay() {
   return STAGES.find((s) => !store.isCleared(s.id)) || STAGES[0];
 }
@@ -471,6 +600,7 @@ function renderTitle() {
   if (nr) nr.textContent = t("char.rabbit");
   const nt = $("#name-tanuki");
   if (nt) nt.textContent = t("char.tanuki");
+  layoutHero();
 }
 
 /* ---------------- ステージ一覧 ---------------- */
@@ -583,11 +713,13 @@ function openStage(stageOrId, opts = {}) {
   nav("game");
   renderProgress();
   tanukiSpeak("start");
-  speak("usagiro", "start");
+  speak("usagiro", "start", { delay: 1050 });
   requestAnimationFrame(() => {
     if (epoch !== app.epoch) return; // もう別のステージに移っている
+    measureCells();
     paintBoard(game);
     const tanuki = $("#tanuki");
+    if (!tanuki) return;
     tanuki.classList.remove("sweating", "caught", "wobble");
     const size = tokenSize();
     const c = cellCenter(game.state.pos);
@@ -599,7 +731,7 @@ function openStage(stageOrId, opts = {}) {
           { transform: `translate(${x}px,${y}px) scale(.2)`, opacity: 0 },
           { transform: `translate(${x}px,${y}px) scale(1)`, opacity: 1 },
         ],
-        { duration: 380, easing: "cubic-bezier(.34,1.56,.5,1)" }
+        { duration: 340, easing: "cubic-bezier(.34,1.56,.5,1)" }
       );
     } catch {} // アニメーションが使えなくても盤面は出す
   });
@@ -637,110 +769,114 @@ function updateHintLabel() {
 
 /* ---------------- タップ ---------------- */
 /**
- * 1手打つ。
- * - app.busy は try/finally と epoch（ステージ世代）で必ず戻す
- * - ステージを移ったあとの古い処理は何もしないで抜ける
- * - 音・アニメーションが失敗してもゲームは止めない
- * これで「1ステージごとにマスが押せなくなる」状態を作らない。
+ * 1手打つ。Build 3 のタップは完全に同期で、ロックも await も無い。
+ *   - 盤面の状態はタップした瞬間に決まる（model が先）
+ *   - 木槌・バイブ・音・声は同時に出す
+ *   - ポコ丸の跳ね・トラップの反転は見た目だけを後から追いかける
+ * だから「アニメーションが終わらないと次のマスが押せない」状態が存在しない。
  */
-async function tapCell(i) {
+function tapCell(i) {
   const s = app.session;
   if (!s || s.game.status !== "playing") return false;
-  if (app.busy) {
-    // 進行中のタップがある。長く続いている（＝古いロック）なら解除して進む
-    if (Date.now() - app.busySince < TAP_LOCK_MS) return false;
-    app.busy = false;
-  }
   const game = s.game;
+  if (!Number.isInteger(i) || i < 0 || i > 24) return false;
+  // 同じマスの連打（180ms 以内）は 1回と数える。
+  // iOS の合成 click や指の震えで同じマスが二度打ちになるのを防ぐ（別のマスは即座に受け付ける）。
+  const now = Date.now();
+  if (i === lastTapCell && now - lastTapAt < 180) return false;
   if (!game.canTap(i)) {
     if (i === game.state.pos) showToast(app.t("game.cellBlocked", { name: app.t("char.tanuki") }));
     return false;
   }
   const epoch = app.epoch;
-  app.busy = true;
-  app.busySince = Date.now();
+  const seq = ++tapSeq;
+  lastTapAt = now;
+  lastTapCell = i;
   try {
-    finishHop();
     clearHint();
     usagiroSwing(i);
-    speak("usagiro", "tap");
+    speak("usagiro", "tap", { throttle: 1700 });
     const result = game.play(i);
     if (!result) return false;
     sfx.flip();
-    await flipAnimation(result.flipped, game);
-    if (epoch !== app.epoch) return false;
-    $("#hud-moves").textContent = String(game.remaining);
-    if (game.remaining <= 1) $("#hud-moves-wrap").classList.add("low");
+    flipPulse(result.flipped);
+    paintBoard(game);
+    updateMovesHud(game);
 
+    const tanuki = $("#tanuki");
     if (result.caught) {
-      await onCaught(game, i, epoch);
+      onCaught(game, i, epoch, seq);
       return true;
     }
 
-    const tanuki = $("#tanuki");
-    tanuki.classList.add("sweating", "wobble");
+    if (tanuki) tanuki.classList.add("sweating", "wobble");
     sfx.sweat();
-    await wait(170);
-    if (epoch !== app.epoch) return false;
-    if (result.tanukiTo != null) await hop(game, result.tanukiFrom, result.tanukiTo);
-    if (epoch !== app.epoch) return false;
-    paintBoard(game);
-    tanuki.classList.remove("sweating", "wobble");
+    if (result.tanukiTo != null) startHop(result.tanukiFrom, result.tanukiTo);
+    later(() => {
+      if (epoch !== app.epoch || seq !== tapSeq) return;
+      if (tanuki) tanuki.classList.remove("sweating", "wobble");
+    }, 380);
     reactNote(game);
 
     if (s.mode === "ta") {
       if (result.outOfMoves) {
         haptics.warning();
         sfx.fail();
-        app.busy = false;
-        app.busySince = 0;
         taPenalty();
-        return true;
       }
     } else if (result.outOfMoves) {
-      await wait(180);
-      if (epoch !== app.epoch) return false;
       tanukiSpeak("escape", "panic");
-      speak("usagiro", "fail");
+      speak("usagiro", "fail", { delay: 620 });
       haptics.warning();
       sfx.fail();
-      showFail(game);
+      later(() => {
+        if (epoch !== app.epoch || seq !== tapSeq) return;
+        showFail(game);
+      }, 240);
     }
     return true;
   } catch (e) {
-    // 何が起きても操作を止めない（音・アニメーションの失敗を含む）
+    // 何が起きても操作は止めない（音・アニメーションの失敗を含む）
     console.warn("tap failed:", e);
     return false;
-  } finally {
-    if (epoch === app.epoch) {
-      app.busy = false;
-      app.busySince = 0;
-    }
   }
 }
 
-async function onCaught(game, cellIdx, epoch) {
+function updateMovesHud(game) {
+  const el = $("#hud-moves");
+  if (el) el.textContent = String(game.remaining);
+  const wrap = $("#hud-moves-wrap");
+  if (wrap) wrap.classList.toggle("low", game.remaining <= 1);
+}
+
+function onCaught(game, cellIdx, epoch, seq) {
   const tanuki = $("#tanuki");
-  tanuki.classList.add("caught");
+  if (tanuki) {
+    tanuki.classList.add("caught");
+    tanuki.classList.remove("sweating", "wobble");
+  }
   speak("usagiro", "clear");
-  tanukiSpeak("caught", "happy");
+  tanukiSpeak("caught", "happy", { delay: 950 });
   sfx.catch_();
   haptics.success();
   spawnSparks(cellIdx);
   const s = app.session;
+  if (!s) return;
   if (s.mode === "ta") {
-    await wait(240);
-    if (epoch !== app.epoch) return;
-    taScore();
+    later(() => {
+      if (epoch !== app.epoch || seq !== tapSeq) return;
+      taScore();
+    }, 240);
     return;
   }
-  await wait(720);
-  if (epoch !== app.epoch) return;
-  spawnConfetti();
-  sfx.stageClear();
-  if (s.mode === "daily" && s.dailyKey) store.markDailyCleared(s.dailyKey);
-  const isNew = s.mode === "stage" ? store.markCleared(game.stage.id) : false;
-  showClear(game, isNew);
+  later(() => {
+    if (epoch !== app.epoch || seq !== tapSeq) return;
+    spawnConfetti();
+    sfx.stageClear();
+    if (s.mode === "daily" && s.dailyKey) store.markDailyCleared(s.dailyKey);
+    const isNew = s.mode === "stage" ? store.markCleared(game.stage.id) : false;
+    showClear(game, isNew);
+  }, 620);
 }
 
 /* ---------------- ヒント ---------------- */
@@ -749,7 +885,7 @@ function clearHint() {
 }
 function showHint() {
   const s = app.session;
-  if (!s || s.game.status !== "playing" || app.busy) return null;
+  if (!s || s.game.status !== "playing") return null;
   if (s.mode !== "ta" && !isPro() && !canUseHint(s.stage.id, store.hintsUsed(s.stage.id))) {
     showToast(app.t("pro.item5"));
     openProSheet();
@@ -911,10 +1047,12 @@ function openTaPuzzle() {
   tanukiSpeak("start");
   requestAnimationFrame(() => {
     if (epoch !== app.epoch) return;
+    measureCells();
     paintBoard(app.session.game);
     const size = tokenSize();
     const c = cellCenter(app.session.game.state.pos);
     const tanuki = $("#tanuki");
+    if (!tanuki) return;
     tanuki.classList.remove("caught", "sweating", "wobble");
     try {
       tanuki.animate(
@@ -1017,6 +1155,9 @@ function setTextSize(value) {
   const size = applyTextSize(value);
   store.setSetting("textSize", size);
   renderSettings();
+  // 文字サイズでホームの高さが変わるので、キャラの大きさを測り直す
+  layoutHero();
+  refreshBoardLayout();
 }
 
 function renderSettings() {
@@ -1340,37 +1481,39 @@ function bind() {
   $("#btn-hint").addEventListener("click", () => showHint());
 
   const board = $("#board");
+  // タップは「押した瞬間」に反応させる（指を離すのを待たない）。
+  // iOS では指の微動で pointerup が来ないことがあるので、押した時点で 1手を確定させる。
   board.addEventListener("pointerdown", (e) => {
     const cell = e.target.closest(".cell");
     if (!cell) return;
     unlockAudio();
-    const s = app.session;
-    // 古いロックが残っていてもここで掃除する（押せないままにしない）
-    if (app.busy && Date.now() - app.busySince > TAP_LOCK_MS) {
-      app.busy = false;
-      app.busySince = 0;
-    }
-    if (!s || s.game.status !== "playing" || app.busy) return;
-    const i = Number(cell.dataset.i);
-    if (!s.game.canTap(i)) return;
-    for (const c of s.game.previewCells(i)) board.children[c].classList.add("preview");
-  });
-  board.addEventListener("pointerup", (e) => {
-    const cell = e.target.closest(".cell");
-    $$(".cell.preview").forEach((c) => c.classList.remove("preview"));
-    if (!cell) return;
-    app.lastPointerTap = Date.now();
+    if (e.isPrimary === false) return;
+    handledPointer = e.pointerId == null ? null : e.pointerId;
     tapCell(Number(cell.dataset.i));
   });
-  // iOS では pointerup が来ないまま終わることがあるので touch でも拾う
+  // pointerdown を拾わなかった場合（古い WebView・検証用の合成イベント・指が外から入った等）
+  board.addEventListener("pointerup", (e) => {
+    if (handledPointer != null && e.pointerId === handledPointer) {
+      handledPointer = null;
+      return;
+    }
+    const cell = e.target.closest(".cell");
+    if (!cell) return;
+    tapCell(Number(cell.dataset.i));
+  });
+  // 最後の砦（支援技術・キーボード・click だけが来る環境）
   board.addEventListener("click", (e) => {
     const cell = e.target.closest(".cell");
     if (!cell) return;
-    if (Date.now() - (app.lastPointerTap || 0) < 400) return; // pointerup と二重にしない
+    if (Date.now() - lastTapAt < 700) return; // pointerdown/up と二重にしない
     tapCell(Number(cell.dataset.i));
   });
-  board.addEventListener("pointercancel", () => $$(".cell.preview").forEach((c) => c.classList.remove("preview")));
-  board.addEventListener("pointerleave", () => $$(".cell.preview").forEach((c) => c.classList.remove("preview")));
+  board.addEventListener("pointercancel", () => {
+    handledPointer = null;
+    $$(".cell.preview").forEach((c) => c.classList.remove("preview"));
+  });
+  // 指がマスとマスの間で離れても、押したマスの手は確定済み（何もしない）
+  board.addEventListener("pointerleave", () => {});
 
   // daily
   $("#btn-daily-play").addEventListener("click", () => {
@@ -1424,14 +1567,41 @@ function bind() {
   $("#pro-restore").addEventListener("click", doRestore);
   $("#btn-pro-from-select").addEventListener("click", () => openProSheet());
 
-  // ライフサイクル: タブが隠れたらタイマーを止めるだけ（音の復帰は audio.js が面倒を見る）
+  // ライフサイクル: 裏に回ったら音を止め、戻ったら見た目と音を必ず戻す
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       if (app.ta) app.ta.paused = true;
-    } else if (app.ta) {
-      app.ta.paused = false;
+      return;
+    }
+    if (app.ta) app.ta.paused = false;
+    // 裏に回っている間にアニメが止まっていても、盤面と入力は生きている状態に戻す
+    finishHop();
+    if (app.session && app.screen === "game") {
+      measureCells();
+      paintBoard(app.session.game);
     }
   });
+
+  // 画面の大きさ・向き・文字サイズが変わったらマスの位置を測り直す
+  window.addEventListener("resize", () => {
+    refreshBoardLayout();
+    layoutHero();
+  });
+  window.addEventListener("orientationchange", () =>
+    later(() => {
+      refreshBoardLayout();
+      layoutHero();
+    }, 150)
+  );
+
+  // 見張り番: 見た目が固まっても、盤面と入力は必ず生きている状態に戻す
+  setInterval(() => {
+    if (app.screen !== "game" || !app.session) return;
+    if (hopAnim && hopAnim.playState !== "running") {
+      finishHop();
+      placeToken(app.session.game);
+    }
+  }, 1200);
 }
 
 /* ---------------- デモ・検証用 API ---------------- */
@@ -1512,7 +1682,17 @@ function exposeApi() {
       freeStages: STAGES.filter((s) => canPlayStage(s, false)).length,
       dailyToday: dailyIndexFor(new Date()),
     }),
-    busy: () => app.busy,
+    busy: () => false,
+    /** 検証用: マスの位置の測り直し（向き・文字サイズ変更の再現） */
+    relayout: () => {
+      refreshBoardLayout();
+      return cellGeom ? cellGeom.cells.length : 0;
+    },
+    layout: () => {
+      const wrap = $("#board-wrap");
+      const w = wrap ? wrap.getBoundingClientRect() : { width: 0 };
+      return { cells: cellGeom ? cellGeom.cells.length : 0, width: Math.round(w.width) };
+    },
     /* ---- 設定・音・ボイス（検査用） ---- */
     textSize: () => normalizeTextSize(store.settings.textSize),
     setTextSize: (v) => {
@@ -1534,10 +1714,12 @@ function exposeApi() {
       return audioDebug();
     },
     voice: (who, situation) => voiceFor(app.lang, who, situation),
-    playVoice: (who, situation) => {
-      speak(who, situation);
-      return audioDebug();
+    playVoice: (who, situation, opts = {}) => {
+      const v = voiceFor(app.lang, who, situation || "start");
+      if (v) playClip(v.url, { who, delay: opts.delay || 0 });
+      return v ? { ...v, who } : null;
     },
+    voices: () => allVoiceUrls(app.lang),
     note: () => ({
       text: $("#note-text") ? $("#note-text").textContent : "",
       tanuki: app.t("char.tanuki"),
@@ -1562,6 +1744,11 @@ async function init() {
   renderProSheet();
   exposeApi();
   bootAudio();
+  // 声は先に読み込んでおく（最初のタップから間を空けずに鳴らす）
+  try {
+    preloadVoices(allVoiceUrls(app.lang));
+  } catch {}
+  layoutHero();
   if (dev) {
     renderSelect();
   }

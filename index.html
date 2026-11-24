@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Kachi Kachi Catch Build 2（フリーズ修正・音の復帰・ボイス・TA120/180秒・文字サイズ） -->
+<!-- Kachi Kachi Catch Build 3（フリーズ根絶・ボイス確実化・タイトル調整） -->
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
@@ -37,14 +37,26 @@
         <span class="l2" id="logo-l2">キャッチ</span>
       </h1>
       <p class="logo-en">KACHI&nbsp;KACHI&nbsp;CATCH</p>
-      <p class="title-tag" id="title-tagline">5×5 詰みパズル</p>
+      <p class="title-tag">
+        <i class="tag-line" aria-hidden="true"></i>
+        <span class="tag-pill"><span class="tag-text" id="title-tagline">5×5 詰みパズル</span></span>
+        <i class="tag-line tag-line-r" aria-hidden="true"></i>
+      </p>
     </div>
 
     <div class="hero">
-      <div class="hero-frame">
-        <img src="assets/title_hero.png" alt="" />
-        <span class="char-name name-rabbit" id="name-rabbit">ウサギロー</span>
-        <span class="char-name name-tanuki" id="name-tanuki">ポコ丸</span>
+      <div class="hero-stage" id="hero-stage">
+        <img class="hero-img" src="assets/title_hero.png" alt="" />
+        <span class="char-name name-rabbit" id="label-rabbit">
+          <i class="name-line" aria-hidden="true"></i>
+          <span class="name-text" id="name-rabbit">ウサギロー</span>
+          <i class="name-line name-line-r" aria-hidden="true"></i>
+        </span>
+        <span class="char-name name-tanuki" id="label-tanuki">
+          <i class="name-line" aria-hidden="true"></i>
+          <span class="name-text" id="name-tanuki">ポコ丸</span>
+          <i class="name-line name-line-r" aria-hidden="true"></i>
+        </span>
       </div>
     </div>
 
@@ -280,7 +292,7 @@
         <span data-i18n="settings.privacy">プライバシーポリシー</span>
         <span class="set-value"><b>›</b></span>
       </div>
-      <p class="version" id="version-line">Kachi Kachi Catch 1.0.0 (2)</p>
+      <p class="version" id="version-line">Kachi Kachi Catch 1.0.0 (3)</p>
     </div>
   </section>
 

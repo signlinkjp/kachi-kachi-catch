@@ -53,3 +53,14 @@ export function voiceFor(lang, who, situation) {
   if (!key) return null;
   return { key, url: voiceUrl(lang, who, key) };
 }
+
+/** その言語で使う声のファイルを全部返す（先読み用） */
+export function allVoiceUrls(lang) {
+  const out = new Set();
+  for (const [who, situations] of Object.entries(VOICE_SETS)) {
+    for (const keys of Object.values(situations)) {
+      for (const key of keys) out.add(voiceUrl(lang, who, key));
+    }
+  }
+  return Array.from(out);
+}

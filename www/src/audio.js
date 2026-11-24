@@ -28,12 +28,27 @@ let building = false;
 let everRan = false;
 let lastRecoverAt = 0;
 
-let voiceNode = null;
-let voiceToken = 0;
 let voiceStarts = 0;
 let voiceStops = 0;
 let lastVoice = null;
+let lastVoiceError = null;
+let nativeVoice = false;
 const clipCache = new Map(); // `${generation}|${url}` -> AudioBuffer
+/** 話者ごとの再生中の声。who -> {src, audio} */
+const voiceNodes = new Map();
+const voiceAudios = new Map();
+let voiceEndTimer = null;
+let duckTimer = null;
+
+function activeVoiceCount() {
+  return voiceNodes.size + voiceAudios.size;
+}
+
+/** Capacitor のネイティブ音声プラグイン（iOS 実機のときだけある） */
+function nativeAudio() {
+  const cap = typeof window !== "undefined" ? window.Capacitor : null;
+  return cap && cap.Plugins && cap.Plugins.KachiAudio ? cap.Plugins.KachiAudio : null;
+}
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -57,17 +72,22 @@ export function audioDebug() {
     state: audioState(),
     generation,
     bgm: bgmOn && !!bgmTimer,
-    voice: !!voiceNode,
+    voice: activeVoiceCount() > 0,
     voiceStarts,
     voiceStops,
     lastVoice,
+    lastVoiceError,
+    nativeVoice,
+    bgmGain: bgmGain ? Math.round(bgmGain.gain.value * 1000) / 1000 : null,
+    voices: Array.from(voiceNodes.keys()).concat(Array.from(voiceAudios.keys())),
     clips: clipCache.size,
   };
 }
 
 function gainFor(name) {
   if (name === "bgm") return store.settings.bgm === false ? 0 : 0.3;
-  if (name === "voice") return store.settings.voice === false ? 0 : 0.95;
+  // 声は BGM・効果音より一段大きく（埋もれないように）
+  if (name === "voice") return store.settings.voice === false ? 0 : 1;
   return store.settings.se === false ? 0 : 0.42;
 }
 
@@ -85,7 +105,7 @@ function build() {
     ctx = new AC();
     generation += 1;
     clipCache.clear();
-    voiceNode = null;
+    voiceNodes.clear();
     // テスト用の差し込みは「新しい AudioContext を作った」時点で解除する
     if (typeof window !== "undefined" && window.__kachiAudioForceState) {
       try {
@@ -179,7 +199,10 @@ export async function recoverAudio() {
 
 export function unlockAudio() {
   if (!ctx) build();
-  else if (audioState() !== "running") recoverAudio();
+  // タップと同じ瞬間に resume を投げる（iOS はここでしか起きない）
+  if (ctx && audioState() !== "running") nudge();
+  else if (ctx && audioState() === "running") everRan = true;
+  if (ctx && audioState() !== "running") recoverAudio();
   // iOS は操作のたびに AudioSession を起こし直すと安定する（AppDelegate 側）
   const cap = window.Capacitor;
   if (cap && cap.Plugins && cap.Plugins.KachiAudio) {
@@ -299,59 +322,239 @@ export const sfx = {
 };
 
 /* ---------------- ボイス ---------------- */
+/*
+  声が実機 iPhone で聴こえなかった理由と、この作り:
 
-/** 鳴っているボイスを止める（連打しても重ならない） */
-export function stopVoice() {
-  voiceToken += 1;
-  if (!voiceNode) return;
-  voiceStops += 1;
+   1. Web Audio は「タップと同じ瞬間」に resume しないと起きない。
+      以前は fetch と decodeAudioData をはさんでから再生していたので、
+      実機では AudioContext が起きないまま声だけが無音になっていた。
+      → ネイティブの AVAudioPlayer（KachiAudioPlugin）で直接鳴らす。
+        無い環境（ブラウザ）では Web Audio → HTMLAudioElement へ落とす。
+
+   2. 声を鳴らすたびに前の声を止めていたため、
+      「ウサギローのひと声 → ポコ丸のセリフ」が続く場面で
+      後から来た声に食われて、ほぼ何も聞こえない状態だった。
+      → 話者ごとに別の声として鳴らす（同じ話者だけ差し替え）。
+
+   3. BGM（0.3）と効果音の下に埋もれていた。
+      → 声は 1.0、鳴っている間だけ BGM を 28% まで下げる（ダッキング）。
+*/
+
+/** 話者ごとの声を止める。who を省くと全部。 */
+export function stopVoice(who) {
+  let stopped = false;
+  for (const [key, entry] of Array.from(voiceNodes.entries())) {
+    if (who && who !== key) continue;
+    try {
+      entry.src.stop(0);
+    } catch {}
+    voiceNodes.delete(key);
+    stopped = true;
+  }
+  for (const [key, el] of Array.from(voiceAudios.entries())) {
+    if (who && who !== key) continue;
+    try {
+      el.pause();
+      el.currentTime = 0;
+    } catch {}
+    voiceAudios.delete(key);
+    stopped = true;
+  }
+  if (stopped) voiceStops += 1;
+  const native = nativeAudio();
+  if (stopped && native) {
+    try {
+      const r = native.stopVoice(who ? { who } : {});
+      if (r && typeof r.catch === "function") r.catch(() => {});
+    } catch {}
+  }
+}
+
+/** BGM を声の間だけ下げる（声が終わったら戻す） */
+function duckBgm(ms) {
+  if (!ctx || !bgmGain) return;
   try {
-    voiceNode.stop(0);
+    const t = ctx.currentTime;
+    bgmGain.gain.cancelScheduledValues(t);
+    bgmGain.gain.setTargetAtTime(gainFor("bgm") * 0.28, t, 0.04);
   } catch {}
-  voiceNode = null;
+  clearTimeout(duckTimer);
+  duckTimer = setTimeout(() => {
+    try {
+      if (!ctx || !bgmGain) return;
+      const t = ctx.currentTime;
+      bgmGain.gain.cancelScheduledValues(t);
+      bgmGain.gain.setTargetAtTime(gainFor("bgm"), t, 0.12);
+    } catch {}
+  }, Math.max(260, ms - 140));
+}
+
+/** ネイティブ（iOS 実機）で鳴らす。鳴らせたら true */
+async function nativePlayVoice(url, who, volume) {
+  const native = nativeAudio();
+  if (!native || typeof native.playVoice !== "function") return false;
+  try {
+    const r = await native.playVoice({ path: url, who, volume });
+    if (r && r.ok) {
+      if (voiceNodes.has(who) || voiceAudios.has(who)) voiceStops += 1;
+      voiceNodes.delete(who);
+      voiceAudios.delete(who);
+      nativeVoice = true;
+      voiceStarts += 1;
+      lastVoice = url;
+      lastVoiceError = null;
+      const ms = Math.round((Number(r.duration) || 1) * 1000);
+      duckBgm(ms);
+      return true;
+    }
+    lastVoiceError = (r && (r.reason || r.path)) || "native failed";
+  } catch (e) {
+    lastVoiceError = String(e);
+  }
+  return false;
+}
+
+/** Web Audio で鳴らす（ブラウザ・開発用） */
+async function webPlayVoice(url, who, volume) {
+  if (!ctx) build();
+  if (!ctx) return false;
+  if (audioState() !== "running") {
+    // タップの合図のままなら即座に戻る。待たない（操作を止めない）。
+    nudge();
+    if (audioState() !== "running") {
+      try {
+        await Promise.race([Promise.resolve(ctx.resume()), wait(180)]);
+      } catch {}
+    }
+  }
+  const c = ctx;
+  if (!c || audioState() !== "running") return false;
+  const id = generation + "|" + url;
+  let buffer = clipCache.get(id);
+  if (!buffer) {
+    const res = await fetch(url, { cache: "force-cache" });
+    if (!res.ok) {
+      lastVoiceError = `fetch ${res.status}`;
+      return false;
+    }
+    const arr = await res.arrayBuffer();
+    buffer = await c.decodeAudioData(arr);
+    if (!buffer) {
+      lastVoiceError = "decode failed";
+      return false;
+    }
+    clipCache.set(id, buffer);
+  }
+  if (voiceNodes.has(who)) stopVoice(who);
+  const src = c.createBufferSource();
+  src.buffer = buffer;
+  const g = c.createGain();
+  g.gain.value = volume;
+  src.connect(g);
+  g.connect(voiceGain || master);
+  voiceNodes.set(who, { src });
+  voiceStarts += 1;
+  lastVoice = url;
+  lastVoiceError = null;
+  src.onended = () => {
+    const cur = voiceNodes.get(who);
+    if (cur && cur.src === src) voiceNodes.delete(who);
+  };
+  try {
+    src.start(0);
+  } catch {
+    voiceNodes.delete(who);
+    return false;
+  }
+  duckBgm(Math.round((buffer.duration || 1) * 1000));
+  return true;
+}
+
+/** 最後の手段: HTMLAudioElement（Web Audio が使えないとき） */
+function htmlPlayVoice(url, who, volume) {
+  if (typeof Audio === "undefined") return false;
+  try {
+    stopVoice(who);
+    const el = new Audio(url);
+    el.volume = Math.max(0, Math.min(1, volume));
+    el.setAttribute("playsinline", "");
+    voiceAudios.set(who, el);
+    ellisten(el, who);
+    voiceStarts += 1;
+    lastVoice = url;
+    const p = el.play();
+    if (p && typeof p.then === "function") p.then(() => duckBgm(Math.round((el.duration || 1) * 1000))).catch(() => {});
+    return true;
+  } catch (e) {
+    lastVoiceError = String(e);
+    return false;
+  }
+}
+
+function ellisten(el, who) {
+  const done = () => {
+    const cur = voiceAudios.get(who);
+    if (cur === el) voiceAudios.delete(who);
+  };
+  el.addEventListener("ended", done, { once: true });
+  el.addEventListener("error", done, { once: true });
 }
 
 /**
- * ボイスを1本鳴らす。前のボイスは止めてから鳴らす。
- * @returns {Promise<boolean>} 鳴らせたか（音が出せなくても例外は投げない）
+ * 声を1本鳴らす。
+ * - who ごとに別の声（同じ話者だけ差し替え）
+ * - 非同期・ノンブロッキング。例外は投げない
+ * @returns {Promise<boolean>} 鳴らせたか
  */
-export async function playClip(url) {
+export async function playClip(url, opts = {}) {
   if (!url) return false;
   if (store.settings.voice === false) return false;
-  try {
-    if (!ctx) build();
-    if (!ctx) return false;
-    if (audioState() !== "running") await recoverAudio();
-    const c = ctx;
-    if (!c) return false;
-    if (audioState() !== "running") return false;
-    const id = generation + "|" + url;
-    let buffer = clipCache.get(id);
-    if (!buffer) {
-      const res = await fetch(url, { cache: "force-cache" });
-      if (!res.ok) return false;
-      const arr = await res.arrayBuffer();
-      buffer = await c.decodeAudioData(arr);
-      if (!buffer) return false;
-      clipCache.set(id, buffer);
-    }
-    if (store.settings.voice === false) return false;
-    stopVoice();
-    const token = voiceToken;
-    const src = c.createBufferSource();
-    src.buffer = buffer;
-    src.connect(voiceGain || master);
-    src.onended = () => {
-      if (token === voiceToken) voiceNode = null;
-    };
-    voiceNode = src;
-    voiceStarts += 1;
-    lastVoice = url;
-    src.start(0);
+  const who = opts.who || "voice";
+  const volume = opts.volume == null ? 1 : opts.volume;
+  const delay = opts.delay || 0;
+  if (delay > 0) {
+    setTimeout(() => {
+      playClip(url, { ...opts, delay: 0 }).catch(() => {});
+    }, delay);
     return true;
-  } catch {
+  }
+  try {
+    if (await nativePlayVoice(url, who, volume)) return true;
+    if (await webPlayVoice(url, who, volume)) return true;
+    return htmlPlayVoice(url, who, volume);
+  } catch (e) {
+    lastVoiceError = String(e);
     return false;
   }
+}
+
+/** 声のファイルを先に読み込む（最初のタップから間を空けない） */
+export function preloadVoices(urls) {
+  if (!Array.isArray(urls) || !urls.length) return;
+  const native = nativeAudio();
+  if (native && typeof native.preloadVoices === "function") {
+    try {
+      const r = native.preloadVoices({ paths: urls });
+      if (r && typeof r.catch === "function") r.catch(() => {});
+    } catch {}
+  }
+  // ブラウザ用: アイドルに decode しておく
+  const warm = () => {
+    if (!ctx) return;
+    for (const url of urls) {
+      const id = generation + "|" + url;
+      if (clipCache.has(id)) continue;
+      fetch(url, { cache: "force-cache" })
+        .then((res) => (res.ok ? res.arrayBuffer() : null))
+        .then((arr) => (arr && ctx ? ctx.decodeAudioData(arr) : null))
+        .then((buffer) => {
+          if (buffer) clipCache.set(id, buffer);
+        })
+        .catch(() => {});
+    }
+  };
+  if (typeof requestIdleCallback === "function") requestIdleCallback(warm, { timeout: 2500 });
+  else setTimeout(warm, 600);
 }
 
 /* ---------------- BGM ---------------- */

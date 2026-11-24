@@ -114,7 +114,7 @@ const waitIdle = async (page, ms = 4000) => {
 {
   const { ctx, page } = await newPage();
   const v = await page.evaluate(() => window.kachi.version);
-  check("Build 2 として起動する", v.build === 2, JSON.stringify(v));
+  check("Build 2 以降として起動する", v.build >= 2, JSON.stringify(v));
   const langs = await page.evaluate(() => {
     const out = [];
     for (const row of document.querySelectorAll("#lang-list .lang-row")) out.push(row.textContent);
