@@ -71,6 +71,11 @@ button { font-family: inherit; }
   padding: calc(env(safe-area-inset-top, 0px) + 46px) 0 calc(env(safe-area-inset-bottom, 0px) + 14px);
 }
 .screen.active { opacity: 1; pointer-events: auto; }
+/* 非表示の画面は、中身ごとタップを受けない。
+   （.screen が pointer-events:none でも、子の .overlay.show が auto のままだと
+     透明なカードがタップとスクロールを全部食べる。Build 3 の実機不具合の原因） */
+.screen:not(.active),
+.screen:not(.active) * { pointer-events: none !important; }
 
 /* ============================ OPENING ============================ */
 #screen-opening { align-items: center; justify-content: center; padding: 0; overflow: hidden; }
@@ -281,6 +286,17 @@ button { font-family: inherit; }
 .menu-btn .ico { font-size: 14px; }
 .menu-btn .pro-chip { position: absolute; top: -7px; right: -4px; }
 .title-util { display: flex; gap: 8px; justify-content: center; }
+/* Build 4: ホームの言語チップを廃止し、設定は上のメニューと同じ普通のボタンに */
+.btn.util-btn {
+  width: min(62%, 230px);
+  justify-content: center;
+  padding: 11px 18px;
+  font-size: 15px;
+  color: var(--verm-dark);
+  border: 2px solid #e9b48d;
+  box-shadow: 0 4px 0 #e9b48d;
+}
+.btn.util-btn .ico { font-size: 15px; color: var(--verm); }
 .chip {
   display: inline-flex;
   align-items: center;
@@ -577,18 +593,27 @@ button { font-family: inherit; }
   transform: rotate(-55deg) scale(.7);
   opacity: 0;
 }
-.usagiro.swing { opacity: 1; animation: usaIn .3s ease-out; }
-.usagiro.swing .mallet { opacity: 1; animation: malletSwing .3s ease-out; }
+.usagiro.swing { opacity: 1; animation: usaIn .52s cubic-bezier(.3,.6,.4,1) forwards; }
+.usagiro.swing .mallet { opacity: 1; animation: malletSwing .52s cubic-bezier(.3,.6,.4,1) forwards; }
 @keyframes usaIn {
-  0% { opacity: 0; transform: var(--pos) scale(.5) rotate(-10deg); }
-  60% { opacity: 1; transform: var(--pos) scale(1.06) rotate(4deg); }
-  100% { opacity: 0; transform: var(--pos) scale(.98) rotate(0); }
+  0% { opacity: 0; transform: var(--pos) scale(.45) rotate(-10deg); }
+  16% { opacity: 1; transform: var(--pos) scale(1.1) rotate(6deg); }
+  /* 振り上げ（ため） */
+  44% { opacity: 1; transform: var(--pos) translateY(-9%) rotate(-4deg) scale(1.04); }
+  /* ドン！ */
+  58% { opacity: 1; transform: var(--pos) translateY(5%) rotate(2deg) scale(1); }
+  76% { opacity: 1; transform: var(--pos) scale(1.03); }
+  100% { opacity: 0; transform: var(--pos) scale(1.12); }
 }
 @keyframes malletSwing {
-  0% { transform: rotate(-80deg) scale(.7); opacity: 0; }
-  35% { transform: rotate(22deg) scale(1.05); opacity: 1; }
-  70% { transform: rotate(-20deg) scale(1); opacity: 1; }
-  100% { transform: rotate(-80deg) scale(.8); opacity: 0; }
+  0% { transform: rotate(-70deg) scale(.7); opacity: 0; }
+  16% { transform: rotate(-30deg) scale(1); opacity: 1; }
+  /* 振り上げ */
+  44% { transform: rotate(-108deg) scale(1.06); opacity: 1; }
+  /* 振り下ろし */
+  58% { transform: rotate(34deg) scale(1.12); opacity: 1; }
+  70% { transform: rotate(8deg) scale(1.04); opacity: 1; }
+  100% { transform: rotate(22deg) scale(.9); opacity: 0; }
 }
 .usagiro .dust { position: absolute; }
 
@@ -620,6 +645,21 @@ button { font-family: inherit; }
 @keyframes dustOut {
   from { transform: scale(.4); opacity: .9; }
   to { transform: scale(1.6) translateY(-6px); opacity: 0; }
+}
+/* 木槌の衝撃波（transform と opacity だけ） */
+.shockwave {
+  position: absolute;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 238, 196, .95);
+  box-shadow: 0 0 0 2px rgba(226, 87, 46, .35);
+  transform: translate(-50%, -50%) scale(.3);
+  animation: shockOut .42s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes shockOut {
+  0% { transform: translate(-50%, -50%) scale(.3); opacity: 1; }
+  70% { opacity: .55; }
+  100% { transform: translate(-50%, -50%) scale(2.6); opacity: 0; }
 }
 
 /* ============================ METER / NOTE / FOOT ============================ */
@@ -733,8 +773,11 @@ button { font-family: inherit; }
 /* ============================ SELECT / DAILY ============================ */
 .select-scroll, .rules-scroll, .settings-scroll, .privacy-scroll {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   padding: 2px var(--pad) 24px;
   display: flex;
   flex-direction: column;

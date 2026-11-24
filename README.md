@@ -2,7 +2,7 @@
 
 日本昔話「カチカチ山」をモチーフにした、**5×5 の詰みパズル**（年齢制限 4+）。
 ウサギの **ウサギロー（Usagiro）** が十字に網を仕掛け、タヌキの **ポコ丸（Pokomaru）** の逃げ場をふさいで捕まえるゲームです。
-Capacitor iOS アプリ（Bundle ID `jp.signlink.KachiCatch`）。現在は **Build 3**（フリーズ根絶・操作のスムーズ化・ウサギロー／ポコ丸のボイス確実再生・ホームの見た目調整）です。
+Capacitor iOS アプリ（Bundle ID `jp.signlink.KachiCatch`）。現在は **Build 4**（声の掛け合い・声質交換・ホームの設定ボタン・叩く/逃げるアニメ・ステージ選択画面のフリーズ根絶）です。
 
 ---
 
@@ -27,7 +27,7 @@ brief のルールをそのまま実装すると、**「ポコ丸のいるマス
 
 ---
 
-## 収録内容（Build 3）
+## 収録内容（Build 4）
 
 | モード | 内容 | 無料 / PRO |
 | --- | --- | --- |
@@ -40,7 +40,48 @@ PRO は買い切りの非消耗型 **`jp.signlink.KachiCatch.pro`**（StoreKit 2
 
 ---
 
-## Build 3 で直したこと
+## Build 4 で直したこと（実機フィードバック4点＋ステージ選択画面のフリーズ）
+
+### 0. 「ステージ選択画面で何も押せない・スクロールできない・←が効かない」（実機フリーズの真因）
+
+クリアカードの「ステージをえらぶ」で `nav("select")` したとき、`#overlay.show`（透明になった全画面の受け皿）が残っていた。
+`.screen` は `pointer-events: none` でも、子の `.overlay.show` が `auto` のままだと透明でもヒットテストに引っかかり、
+次の画面のタップもスクロールも全部食べる（＝盤面もカードも押せない「フリーズ」に見える）。
+
+- `nav()` で必ず `closeOverlays()`（クリア/失敗カード・シート・トースト）を閉じる。`resetInteraction()` でもカードを畳む。
+- CSS で `.screen:not(.active), .screen:not(.active) * { pointer-events: none !important; }`（非表示の画面は中身ごと触れない）。
+- スクロール領域に `min-height: 0` / `touch-action: pan-y` / `overscroll-behavior: contain` を明示。
+- 見張り番（1.2秒）が「透明なオーバーレイ」「決着したのにカードが出ない」を自己修復する。
+- E2E に「クリア→ステージをえらぶ→下までスクロール→激ムズをタップ→←でホーム」を追加（`tools/e2e-build4.mjs`）。
+
+### 1. ウサギローとポコ丸が同時に喋る
+
+声は **必ず1本ずつ**（`src/audio.js` の掛け合いキュー）。前の声が終わって 0.15 秒あけてから次を鳴らす。
+連打時は待機中の古い声を捨てて最新の1本だけ待つので、声が溜まらない。
+ネイティブ（`AppDelegate.swift`）側も、鳴らす前に鳴っている声を全部止める。
+また `AVAudioPlayer(contentsOf:)` の読み込みはバックグラウンドキューへ移し、`AVAudioSession` の起こし直しは2秒に1回までにした（タップのたびにメインスレッドで setActive しない）。
+
+### 2. 声質の交換
+
+| キャラ | 日本語 | 英語 | トーン |
+| --- | --- | --- | --- |
+| ウサギロー | `ja-JP-NanamiNeural` | `en-US-AnaNeural` | pitch `+30Hz` / rate `+12%`（明るく元気） |
+| ポコ丸 | `ja-JP-KeitaNeural` | `en-US-BrianNeural` | pitch `+8Hz` / rate `+8%`（丸み・お調子者） |
+
+`tools/voices.json` を更新し、`tools/gen_voices.py` で ja/en 計38本を再生成（`assets/voices/` → `www/`）。
+
+### 3. ホームの「🌐 日本語」削除と「⚙ 設定」の視認性
+
+- 言語切替は「設定 > 言語」に一本化（ホームの言語チップを削除）。
+- 設定ボタンは ステージ／あそびかた と同じ `menu-btn` の見た目（濃い文字色 `--verm-dark`・はっきりした枠線・同じ文字サイズ）で中央配置。
+
+### 4. 叩く/逃げるアニメーション
+
+- ウサギロー: 約0.52秒（Build 3 は0.3秒）。ポンと出る → 木槌を振り上げ → **ドン！**（290ms に効果音・バイブ・衝撃波リング）。
+- ポコ丸: 約0.42秒（Build 3 は0.3秒）。**ビクッ**（scale .9/1.14）→ 放物線でぴょーん（回転つき）→ 着地でつぶれる。足元に砂煙。
+- どちらも `transform` と `opacity` だけの GPU 合成で、`await` しない（連打しても次の手は即通る）。
+
+### Build 3 で直したこと
 
 ### 1. 「2ステージやったら固まる」「操作がもたつく」
 
@@ -76,6 +117,7 @@ PRO は買い切りの非消耗型 **`jp.signlink.KachiCatch.pro`**（StoreKit 2
 
 ### E2E（`npm run test:e2e`）
 
+- `tools/e2e-build4.mjs`（33チェック）: ステージ選択画面の導線（クリア→選ぶ→スクロール→激ムズ→←）、声の排他キュー、叩く/逃げるアニメ、深い盤面のタップ時間、8ステージ往復。
 - `tools/e2e-build3.mjs`（30チェック）: 連続クリア・やりなおし・設定往復・連打・`pointerdown` のみ・`pointercancel`・`click` のみ・
   例外注入（アニメ/音）・上級面のタップ時間・乱打・声の同時再生と BGM ダッキング・12言語のラベル・全体像の見切れゼロ。
 - `tools/e2e-build2.mjs`（35チェック）: Build 2 の回帰（タイムアタック・音の復帰・文字サイズ・無料/PRO）。
@@ -91,7 +133,7 @@ PRO は買い切りの非消耗型 **`jp.signlink.KachiCatch.pro`**（StoreKit 2
 - `tanukiReply()` → ポコ丸AI（最も長く生き残る手を選ぶ）
 - `principalLine()` / `src/solutions.js` → 全170問の最善手順を事前計算（起動時の計算ゼロ）
 
-### 検証（`npm test`・318テスト）
+### 検証（`npm test`・329テスト）
 
 - ルール（十字5マス・8方向の逃げ道・タップ不可マス）の単体テスト
 - ソルバーと**素朴実装（メモ化なしの配列版）**の総当たり照合
@@ -105,7 +147,7 @@ PRO は買い切りの非消耗型 **`jp.signlink.KachiCatch.pro`**（StoreKit 2
 
 ```
 npm install
-npm test          # 300 tests
+npm test          # 329 tests
 npm run test:e2e  # Playwright（連続ステージ・音の復帰・ボイス・文字サイズ・レイアウト）
 npm run serve     # http://127.0.0.1:8123 （ブラウザで試遊）
 npm run www       # 配布用 www/ を作る
@@ -171,10 +213,10 @@ python3 tools/make_icon.py        # アプリアイコン1024・スプラッシ�
 
 ---
 
-## iOS（Build 3）
+## iOS（Build 4）
 
 - Bundle ID: `jp.signlink.KachiCatch` / 表示名: `Kachi Kachi Catch`
-- `MARKETING_VERSION = 1.0.0` / `CURRENT_PROJECT_VERSION = 2`（ワークフローが自動で読み取るので貼り替え不要）
+- `MARKETING_VERSION = 1.0.0` / `CURRENT_PROJECT_VERSION = 4`（ワークフローが自動で読み取るので貼り替え不要）
 - `TARGETED_DEVICE_FAMILY = "1,2"`（iPhone & iPad）
 - `AppDelegate.swift`: `StoreKitPlugin`（StoreKit 2・`jp.signlink.KachiCatch.pro`）、`KachiHapticsPlugin`、`KachiAudioPlugin`（割り込み終了・メディアサービスリセット・イヤホン抜き差しで AudioSession を起こし直す）
 - アイコン: `assets/kachi-appicon-1024.png` → `ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png`（1024・RGB・透過なし）

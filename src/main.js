@@ -50,7 +50,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const VERSION = "1.0.0";
-const BUILD = 3;
+const BUILD = 4;
 
 const app = {
   screen: "opening",
@@ -84,6 +84,9 @@ function resetInteraction() {
   clearLater();
   finishHop();
   stopVoice();
+  // クリア/失敗カード（透明になった全画面の受け皿）も必ず畳む
+  const ov = $("#overlay");
+  if (ov) ov.classList.remove("show");
   handledPointer = null;
   $$(".cell.preview, .cell.hint, #board .cell.flip, #board .cell.netted").forEach((c) =>
     c.classList.remove("preview", "hint", "flip", "netted")
@@ -115,9 +118,9 @@ const voiceState = { lastAt: new Map() };
 
 /**
  * 声を鳴らす。
- * - who ごとに別の声（ウサギローの声とポコ丸の声は重なってよい）
+ * - Build 4 から声は1本ずつ（audio.js の掛け合いキューが排他する）
  * - throttle: 同じ場面の声を続けて鳴らさない（語尾が切れないように）
- * - delay: 他の声とぶつからないように少し遅らせる
+ * - delay: 掛け合いの間合い（前の声が終わったあとに鳴る）
  */
 function speak(who, situation, opts = {}) {
   try {
@@ -169,6 +172,25 @@ function applyI18n(root = document) {
   });
 }
 
+/**
+ * 画面を移るときに、前の画面のモーダル・カード・トーストを必ず畳む。
+ *
+ * Build 3 の実機不具合「ステージ選択画面で何も押せない・スクロールできない」の原因は
+ * これだった: クリアカードの「ステージをえらぶ」で nav() したとき、
+ * #overlay の .show（透明になった全画面の受け皿）が残り、
+ * 次の画面のタップもスクロールも全部食べていた。
+ * .screen は pointer-events: none でも、子の .overlay.show が auto のままなら
+ * 透明でもヒットテストに引っかかる（CSS の仕様どおりの動き）。
+ * だから「画面を移る = オーバーレイを閉じる」を必ずセットにする。
+ */
+function closeOverlays() {
+  const ov = $("#overlay");
+  if (ov) ov.classList.remove("show");
+  closeAllSheets();
+  const toast = $("#toast");
+  if (toast) toast.classList.remove("show");
+}
+
 /* ---------------- 画面遷移 ---------------- */
 function nav(screen) {
   if (screen !== "game") {
@@ -176,6 +198,8 @@ function nav(screen) {
     if (app.ta) stopTimeAttack();
     if (app.screen === "game") resetInteraction();
   }
+  // どの画面へ移っても、前の画面のモーダルは残さない（タップを食べる透明な幕を作らない）
+  closeOverlays();
   app.screen = screen;
   $$(".screen").forEach((el) => el.classList.toggle("active", el.id === `screen-${screen}`));
   if (screen === "select") renderSelect();
@@ -352,16 +376,24 @@ function startHop(from, to) {
   haptics.hop();
   const dx = bx - ax;
   const dy = by - ay;
+  const air = Math.max(18, size * 0.55); // 放物線の高さ
+  const tilt = dx >= 0 ? 9 : -9;
   try {
     if (typeof tanuki.animate !== "function") throw new Error("no animate");
+    // transform と opacity だけ（GPU 合成）。await しないので連打を止めない
     hopAnim = tanuki.animate(
       [
-        { transform: `translate(${ax}px,${ay}px) scale(1,1)` },
-        { transform: `translate(${ax + dx * 0.28}px,${ay + dy * 0.28 - size * 0.4}px) scale(.95,1.08)`, offset: 0.3 },
-        { transform: `translate(${ax + dx * 0.62}px,${ay + dy * 0.62 - size * 0.48}px) scale(1.05,.95)`, offset: 0.62 },
-        { transform: `translate(${bx}px,${by}px) scale(1,1)` },
+        { transform: `translate(${ax}px,${ay}px) scale(1,1) rotate(0deg)`, offset: 0 },
+        // ビクッ（叩かれた瞬間に身をすくめる）
+        { transform: `translate(${ax}px,${ay - size * 0.22}px) scale(.9,1.14) rotate(${tilt * 0.4}deg)`, offset: 0.12 },
+        // ぴょーん（放物線の頂点）
+        { transform: `translate(${ax + dx * 0.34}px,${ay + dy * 0.34 - air}px) scale(.94,1.08) rotate(${tilt}deg)`, offset: 0.42 },
+        { transform: `translate(${ax + dx * 0.72}px,${ay + dy * 0.72 - air * 0.6}px) scale(1.02,.98) rotate(${tilt * 0.6}deg)`, offset: 0.68 },
+        // 着地（つぶれて戻る）
+        { transform: `translate(${bx}px,${by}px) scale(1.14,.86) rotate(0deg)`, offset: 0.84 },
+        { transform: `translate(${bx}px,${by}px) scale(1,1) rotate(0deg)`, offset: 1 },
       ],
-      { duration: 300, easing: "cubic-bezier(.32,.9,.36,1)" }
+      { duration: 420, easing: "cubic-bezier(.3,.6,.4,1)" }
     );
     hopAnim.onfinish = () => {
       hopAnim = null;
@@ -390,20 +422,40 @@ function finishHop() {
 
 function puff(x, y, size) {
   const fx = $("#fx");
-  for (let k = 0; k < 3; k++) {
+  for (let k = 0; k < 4; k++) {
     const d = document.createElement("div");
     d.className = "dustpuff";
-    d.style.left = x + size / 2 - 8 + (k - 1) * 9 + "px";
+    d.style.left = x + size / 2 - 8 + (k - 1.5) * 9 + "px";
     d.style.top = y + size - 10 + (k % 2) * 4 + "px";
-    d.style.animationDelay = k * 40 + "ms";
+    d.style.animationDelay = k * 35 + "ms";
     fx.appendChild(d);
-    setTimeout(() => d.remove(), 600);
+    setTimeout(() => d.remove(), 620);
   }
 }
 
-/** ウサギローがタップ位置に現れて木槌をポン（0.3秒・連打を止めない） */
+/** 木槌が当たった瞬間の衝撃波リング（transform と opacity だけの軽い演出） */
+function shockwave(x, y, size) {
+  const fx = $("#fx");
+  if (!fx) return;
+  const ring = document.createElement("div");
+  ring.className = "shockwave";
+  const d = Math.max(20, Math.round(size * 0.46));
+  ring.style.left = Math.round(x) + "px";
+  ring.style.top = Math.round(y) + "px";
+  ring.style.width = d + "px";
+  ring.style.height = d + "px";
+  fx.appendChild(ring);
+  setTimeout(() => ring.remove(), 460);
+}
+
+/**
+ * ウサギローがタップ位置にポンと出て、木槌を振り上げて「ドン！」と叩く。
+ * 約 0.52 秒（Build 3 は 0.3 秒）。await しないので連打しても次の手は即通る。
+ */
+let swingSeq = 0;
 function usagiroSwing(cellIdx) {
   const el = $("#usagiro");
+  if (!el) return;
   const c = cellCenter(cellIdx);
   const size = el.getBoundingClientRect().width || 40;
   const x = c.x + (c.s - size) / 2;
@@ -412,9 +464,19 @@ function usagiroSwing(cellIdx) {
   el.classList.remove("swing");
   void el.offsetWidth;
   el.classList.add("swing");
-  sfx.mallet();
-  haptics.flip();
-  setTimeout(() => el.classList.remove("swing"), 340);
+  const epoch = app.epoch;
+  const seq = ++swingSeq;
+  // 振り下ろす瞬間（アニメの約 58% ＝ 290ms）に音・バイブ・衝撃波を合わせる
+  later(() => {
+    if (epoch !== app.epoch || seq !== swingSeq) return;
+    sfx.mallet();
+    haptics.flip();
+    shockwave(c.x + c.s / 2, c.y + c.s / 2, c.s);
+  }, 290);
+  later(() => {
+    if (seq !== swingSeq) return;
+    el.classList.remove("swing");
+  }, 560);
 }
 
 function flipPulse(cells) {
@@ -579,7 +641,8 @@ function renderTitle() {
   const t = app.t;
   const cleared = store.clearCount(STAGES.map((s) => s.id));
   $("#credit-line").textContent = `${t("stage.progress", { a: cleared, b: STAGES.length })} ・ ${t("menu.daily")}`;
-  $("#lang-chip").textContent = (LANGS.find((l) => l.code === app.lang) || LANGS[0]).label;
+  const langChip = $("#lang-chip");
+  if (langChip) langChip.textContent = (LANGS.find((l) => l.code === app.lang) || LANGS[0]).label;
   const todayKey = dateKey();
   $("#daily-dot").classList.toggle("show", !store.isDailyCleared(todayKey));
   const next = nextStageToPlay();
@@ -713,7 +776,7 @@ function openStage(stageOrId, opts = {}) {
   nav("game");
   renderProgress();
   tanukiSpeak("start");
-  speak("usagiro", "start", { delay: 1050 });
+  speak("usagiro", "start"); // 声は1本ずつ（ポコ丸のあとにウサギローが続く）
   requestAnimationFrame(() => {
     if (epoch !== app.epoch) return; // もう別のステージに移っている
     measureCells();
@@ -1428,11 +1491,7 @@ function bind() {
     sfx.ui();
     nav("settings");
   });
-  $("#btn-lang").addEventListener("click", () => {
-    sfx.ui();
-    renderLangSheet();
-    openSheet("lang-sheet");
-  });
+  // 言語切替は「設定 > 言語」に一本化（Build 4 でホームの 🌐 チップを削除）
   $("#lang-close").addEventListener("click", () => closeSheet("lang-sheet"));
   $("#howto-close").addEventListener("click", () => closeSheet("howto-sheet"));
   $("#howto-ok").addEventListener("click", () => closeSheet("howto-sheet"));
@@ -1596,10 +1655,29 @@ function bind() {
 
   // 見張り番: 見た目が固まっても、盤面と入力は必ず生きている状態に戻す
   setInterval(() => {
+    // 透明なオーバーレイが残って次の画面のタップを食べていないか（実機の「固まった」対策）
+    if (app.screen !== "game") {
+      const ov0 = $("#overlay");
+      if (ov0 && ov0.classList.contains("show")) ov0.classList.remove("show");
+    }
     if (app.screen !== "game" || !app.session) return;
+    const game = app.session.game;
+    const ov = $("#overlay");
+    // ゲーム中にオーバーレイが残っていたら畳む（モーダルは openTaSheet 等で開くので
+    // ここでの対象はクリア/失敗カードだけ。TA 中は endTimeAttack のカードがあるので触らない）
+    if (ov && ov.classList.contains("show") && game.status === "playing" && !app.ta) {
+      ov.classList.remove("show");
+    }
+    // 決着したのにカードが出ていないなら、必ず出す（クリア/失敗の演出 0.6秒を待ってから）
+    if (ov && !ov.classList.contains("show") && game.status !== "playing" && !app.ta) {
+      if (Date.now() - lastTapAt > 1500) {
+        if (game.status === "clear") showClear(game, false);
+        else showFail(game);
+      }
+    }
     if (hopAnim && hopAnim.playState !== "running") {
       finishHop();
-      placeToken(app.session.game);
+      placeToken(game);
     }
   }, 1200);
 }

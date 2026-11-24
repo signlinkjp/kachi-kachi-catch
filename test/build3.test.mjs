@@ -17,26 +17,18 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, "..");
 const read = (p) => fs.readFileSync(path.join(ROOT, p), "utf8");
 
-test("版: package.json は build 3", () => {
+test("版: package.json / index.html / main.js / iOS のビルド番号が揃っている", () => {
   const pkg = JSON.parse(read("package.json"));
   assert.equal(pkg.version, "1.0.0");
-  assert.equal(pkg.build, 3);
-  assert.match(pkg.description, /Build 3/);
-  assert.match(pkg.scripts.test, /test\/build3\.test\.mjs/);
-});
-
-test("版: index.html と設定画面が 1.0.0 (3)", () => {
   const html = read("index.html");
-  assert.match(html, /Build 3/);
-  assert.ok(!/Build 2/.test(html), "index.html に Build 2 の注記が残っている");
-  assert.match(html, /1\.0\.0 \(3\)/);
-  assert.match(read("src/main.js"), /const BUILD = 3;/);
-});
-
-test("版: iOS の CURRENT_PROJECT_VERSION は 3 の1つだけ", () => {
+  const main = read("src/main.js");
   const pbx = read("ios/App/App.xcodeproj/project.pbxproj");
   const values = [...new Set([...pbx.matchAll(/CURRENT_PROJECT_VERSION = (\d+);/g)].map((m) => m[1]))];
-  assert.deepEqual(values, ["3"], `値: ${values.join(",")}`);
+  assert.deepEqual(values.length, 1, `iOS のビルド番号が揃っていない: ${values.join(",")}`);
+  const build = Number(values[0]);
+  assert.equal(pkg.build, build, `package.json の build が iOS と違う（${pkg.build} / ${build}）`);
+  assert.ok(html.includes(`1.0.0 (${build})`), `index.html の表示が 1.0.0 (${build}) でない`);
+  assert.ok(main.includes(`const BUILD = ${build};`), `main.js の BUILD が ${build} でない`);
   assert.match(pbx, /MARKETING_VERSION = 1\.0\.0;/);
   assert.match(pbx, /PRODUCT_BUNDLE_IDENTIFIER = jp\.signlink\.KachiCatch;/);
 });
@@ -138,13 +130,15 @@ test("声: iOS 側に AVAudioPlayer の再生・停止・先読みがある", ()
   assert.match(swift, /public\/\\\(rel\)/, "バンドル内の public/ を見ていない");
 });
 
-test("声: タップの声は間引いて語尾を切らない／ポコ丸の声とはぶつけない", () => {
-  const src = read("src/main.js");
-  assert.match(src, /speak\("usagiro", "tap", \{ throttle: \d+ \}\)/);
-  assert.match(src, /speak\("usagiro", "start", \{ delay: \d+ \}\)/);
-  assert.match(src, /tanukiSpeak\("caught", "happy", \{ delay: \d+ \}\)/);
+test("声: タップの声は間引く／掛け合いは audio.js のキューが排他する", () => {
+  const main = read("src/main.js");
+  const audio = read("src/audio.js");
+  assert.match(main, /speak\("usagiro", "tap", \{ throttle: \d+ \}\)/);
+  assert.match(main, /tanukiSpeak\("caught", "happy", \{ delay: \d+ \}\)/);
+  assert.match(audio, /VOICE_GAP_MS/);
+  assert.match(audio, /pendingVoice/);
   // stopVoice はステージを移るとき（resetInteraction）だけ
-  assert.match(src, /function resetInteraction\(\)[\s\S]{0,400}stopVoice\(\)/);
+  assert.match(main, /function resetInteraction\(\)[\s\S]{0,400}stopVoice\(\)/);
 });
 
 /* ---------------- ホームの見た目 ---------------- */

@@ -17,6 +17,8 @@ export const VOICE_SETS = {
     fail: ["fail1", "fail2"],
   },
   pokomaru: {
+    // 開始の挨拶（Build 4: ウサギローと1人ずつ掛け合うため、開始も喋る）
+    start: ["taunt0"],
     taunt: ["taunt0", "taunt1", "taunt2", "taunt3"],
     panic: ["panic1", "panic2", "panic3"],
     caught: ["caught1", "caught2"],

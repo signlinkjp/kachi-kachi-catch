@@ -1,13 +1,13 @@
 {
-  "comment": "Kachi Kachi Catch のボイス台本。tools/gen_voices.py が edge-tts で assets/voices/{lang}/ に mp3 を作る。",
+  "comment": "Kachi Kachi Catch のボイス台本。tools/gen_voices.py が edge-tts で assets/voices/{lang}/ に mp3 を作る。Build 4 でウサギローとポコ丸の声質を交換（ウサギロー＝明るい女声＋高め、ポコ丸＝丸みのある男声）。",
   "voices": {
     "ja": {
-      "usagiro": { "voice": "ja-JP-KeitaNeural", "pitch": "+12Hz", "rate": "+10%" },
-      "pokomaru": { "voice": "ja-JP-NanamiNeural", "pitch": "+22Hz", "rate": "+8%" }
+      "usagiro": { "voice": "ja-JP-NanamiNeural", "pitch": "+30Hz", "rate": "+12%" },
+      "pokomaru": { "voice": "ja-JP-KeitaNeural", "pitch": "+8Hz", "rate": "+8%" }
     },
     "en": {
-      "usagiro": { "voice": "en-US-BrianNeural", "pitch": "+12Hz", "rate": "+10%" },
-      "pokomaru": { "voice": "en-US-AnaNeural", "pitch": "+8Hz", "rate": "+6%" }
+      "usagiro": { "voice": "en-US-AnaNeural", "pitch": "+30Hz", "rate": "+12%" },
+      "pokomaru": { "voice": "en-US-BrianNeural", "pitch": "+8Hz", "rate": "+8%" }
     }
   },
   "lines": {

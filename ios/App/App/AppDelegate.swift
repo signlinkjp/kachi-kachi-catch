@@ -32,10 +32,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     /// WebView とは別にアプリ側の AudioSession を playback で用意しておく。
     /// 電話・Siri・バックグラウンドから戻ると止まっていることがあるので都度起こす。
-    static func activateAudioSession() {
+    /// Build 4: タップのたびに setCategory / setActive を叩くと重いので、
+    /// 直近 2 秒以内に起きていれば何もしない（force: true で必ず起こし直す）。
+    private static var lastActivate: CFTimeInterval = 0
+    static func activateAudioSession(force: Bool = false) {
+        let now = CACurrentMediaTime()
+        if !force && now - lastActivate < 2.0 { return }
+        lastActivate = now
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            if session.category != .playback {
+                try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            }
             try session.setActive(true)
         } catch {
             NSLog("Kachi Kachi Catch: AVAudioSession setup failed: \(error)")
@@ -50,11 +58,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationWillEnterForeground(_ application: UIApplication) {
         // 戻ってきたら必ず AudioSession を起こし直す（WKWebView 側も resume し直す）
-        AppDelegate.activateAudioSession()
+        AppDelegate.activateAudioSession(force: true)
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        AppDelegate.activateAudioSession()
+        AppDelegate.activateAudioSession(force: true)
     }
 
     func applicationWillTerminate(_ application: UIApplication) {}
@@ -117,6 +125,8 @@ public class KachiAudioPlugin: CAPPlugin, CAPBridgedPlugin {
     private var voicePlayers: [String: AVAudioPlayer] = [:] // who -> 再生中
     private var voiceCache: [String: AVAudioPlayer] = [:] // path -> 準備済み
     private var voiceGeneration = 0
+    /// ファイル読み込みとキャッシュはこの直列キューだけで触る（メインスレッドを止めない）
+    private let voiceQueue = DispatchQueue(label: "jp.signlink.KachiCatch.voices", qos: .userInitiated)
 
     /// `assets/voices/ja/usagiro-start1.mp3` のような相対パスを実ファイルに解決する
     static func voiceURL(_ relative: String) -> URL? {
@@ -136,7 +146,8 @@ public class KachiAudioPlugin: CAPPlugin, CAPBridgedPlugin {
         return nil
     }
 
-    /// 声を1つ鳴らす。同じ話者の前の声は止める（重ならない）。
+    /// 声を1つ鳴らす。同時に2人の声は鳴らさない（鳴っている声を全部止めてから）。
+    /// ファイル読み込み（AVAudioPlayer(contentsOf:)）はバックグラウンドで行う。
     @objc public func playVoice(_ call: CAPPluginCall) {
         let path = call.getString("path") ?? ""
         let who = call.getString("who") ?? "voice"
@@ -150,19 +161,27 @@ public class KachiAudioPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         AppDelegate.activateAudioSession()
-        DispatchQueue.main.async {
-            self.voiceGeneration += 1
-            if let playing = self.voicePlayers[who] {
-                playing.stop()
-                self.voicePlayers[who] = nil
+        voiceQueue.async {
+            let prepared: AVAudioPlayer?
+            if let cached = self.voiceCache[path] {
+                prepared = cached
+            } else if let player = try? AVAudioPlayer(contentsOf: url) {
+                player.prepareToPlay()
+                self.voiceCache[path] = player
+                prepared = player
+            } else {
+                prepared = nil
             }
-            do {
-                let player: AVAudioPlayer
-                if let cached = self.voiceCache[path] {
-                    player = cached
-                } else {
-                    player = try AVAudioPlayer(contentsOf: url)
-                    self.voiceCache[path] = player
+            DispatchQueue.main.async {
+                guard let player = prepared else {
+                    call.resolve(["ok": false, "reason": "load failed", "path": path])
+                    return
+                }
+                self.voiceGeneration += 1
+                // 排他: どの話者の声も止めてから鳴らす（2人が同時にしゃべらない）
+                for (key, playing) in self.voicePlayers {
+                    playing.stop()
+                    self.voicePlayers.removeValue(forKey: key)
                 }
                 player.stop()
                 player.currentTime = 0
@@ -175,8 +194,6 @@ public class KachiAudioPlugin: CAPPlugin, CAPBridgedPlugin {
                 }
                 self.voicePlayers[who] = player
                 call.resolve(["ok": true, "duration": Double(player.duration), "path": path])
-            } catch {
-                call.resolve(["ok": false, "reason": "\(error.localizedDescription)"])
             }
         }
     }
@@ -198,8 +215,8 @@ public class KachiAudioPlugin: CAPPlugin, CAPBridgedPlugin {
     /// 声のファイルを先に読み込んでおく（最初のタップから間を空けずに鳴らす）
     @objc public func preloadVoices(_ call: CAPPluginCall) {
         let paths = call.getArray("paths", String.self) ?? []
-        // キャッシュは main だけで触る（再生側との競合を作らない）
-        DispatchQueue.main.async {
+        // 読み込みはバックグラウンドで（起動直後のメインスレッドを止めない）
+        voiceQueue.async {
             var loaded = 0
             for path in paths {
                 if self.voiceCache[path] != nil {
@@ -213,7 +230,9 @@ public class KachiAudioPlugin: CAPPlugin, CAPBridgedPlugin {
                     loaded += 1
                 }
             }
-            call.resolve(["ok": true, "loaded": loaded])
+            DispatchQueue.main.async {
+                call.resolve(["ok": true, "loaded": loaded])
+            }
         }
     }
 
@@ -272,19 +291,19 @@ public class KachiAudioPlugin: CAPPlugin, CAPBridgedPlugin {
             let type = AVAudioSession.InterruptionType(rawValue: raw)
         else { return }
         if type == .ended {
-            AppDelegate.activateAudioSession()
+            AppDelegate.activateAudioSession(force: true)
             notifyListeners("audioResumed", data: ["reason": "interruptionEnded"])
         }
     }
 
     @objc private func handleMediaReset(_ note: Notification) {
-        AppDelegate.activateAudioSession()
+        AppDelegate.activateAudioSession(force: true)
         notifyListeners("audioResumed", data: ["reason": "mediaServicesReset"])
     }
 
     @objc private func handleRouteChange(_ note: Notification) {
         // イヤホンを抜き差しすると AudioSession が止まることがある
-        AppDelegate.activateAudioSession()
+        AppDelegate.activateAudioSession(force: true)
     }
 }
 

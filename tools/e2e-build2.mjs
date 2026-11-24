@@ -348,9 +348,10 @@ const waitIdle = async (page, ms = 4000) => {
     }
     await new Promise((r) => setTimeout(r, 120));
     const after = window.kachi.audio();
-    return { starts: after.voiceStarts - before.voiceStarts, stops: after.voiceStops - before.voiceStops, last: after.lastVoice };
+    return { starts: after.voiceStarts - before.voiceStarts, stops: after.voiceStops - before.voiceStops, queued: after.voiceQueued, busy: after.voiceBusy, voices: after.voices };
   });
-  check("連打で前のボイスを止める", stops.starts >= 3 && stops.stops >= 2, JSON.stringify(stops));
+  // Build 4: 連打は「古い待機を間引いて最新の1本だけ待つ」（声が溜まらない・重ならない）
+  check("連打しても声が溜まらない（待機は最新の1本）", stops.starts <= 2 && stops.queued <= 1 && stops.voices.length <= 1, JSON.stringify(stops));
 
   // 日英のファイルが実際に取れる
   const files = await page.evaluate(async () => {

@@ -106,9 +106,9 @@ const waitCard = (page, ms = 5000) =>
 {
   const { ctx, page } = await newPage();
   const v = await page.evaluate(() => window.kachi.version);
-  check("Build 3 として起動する", v.build === 3, JSON.stringify(v));
+  check("Build 3 以降として起動する", v.build >= 3, JSON.stringify(v));
   const ver = await page.evaluate(() => document.querySelector("#version-line").textContent);
-  check("設定画面の版が 1.0.0 (3)", /1\.0\.0 \(3\)/.test(ver), ver);
+  check("設定画面の版が 1.0.0 (ビルド番号)", /1\.0\.0 \(\d+\)/.test(ver), ver);
   await ctx.close();
 }
 
@@ -301,15 +301,21 @@ const waitCard = (page, ms = 5000) =>
     document.querySelector("#btn-play").click();
   });
   await page.waitForTimeout(400);
-  const before = await page.evaluate(() => window.kachi.audio());
   const two = await page.evaluate(async () => {
     const s = window.kachi;
+    const n0 = s.audio().voiceStarts;
     const a = s.playVoice("usagiro", "clear");
     const b = s.playVoice("pokomaru", "caught");
-    await new Promise((r) => setTimeout(r, 400));
-    return { a, b, dbg: s.audio() };
+    // Build 4: 声は1人ずつ。同時に2人鳴っていないことを観測する
+    let maxAtOnce = 0;
+    for (let k = 0; k < 150; k++) {
+      const dbg = s.audio();
+      maxAtOnce = Math.max(maxAtOnce, (dbg.voices || []).length);
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    return { a, b, maxAtOnce, starts: s.audio().voiceStarts - n0, dbg: s.audio() };
   });
-  check("ウサギローとポコ丸の声が同時に鳴る（別チャンネル）", two.dbg.voices.length === 2, JSON.stringify(two.dbg.voices));
+  check("2人の声は同時に鳴らず、1人ずつ順番に鳴る", two.maxAtOnce <= 1 && two.starts >= 1, JSON.stringify({ maxAtOnce: two.maxAtOnce, starts: two.starts }));
   check("ボイスは assets/voices の mp3 を指す", /assets\/voices\/(ja|en)\//.test(two.a.url) && /assets\/voices\/(ja|en)\//.test(two.b.url), `${two.a.url} / ${two.b.url}`);
 
   const throttle = await page.evaluate(async () => {

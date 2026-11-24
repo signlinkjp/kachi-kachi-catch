@@ -12,6 +12,7 @@ import {
   isCaught,
   solveState,
   principalLine,
+  playableCells,
   parseCell,
   MAX_MOVES,
 } from "./solver.js";
@@ -110,9 +111,27 @@ export class Game {
     // キャッシュした最善手順と今の局面が一致していればそれを使う
     const pvMove = this.pvMoveForCurrent();
     if (pvMove != null) return pvMove;
-    const sol = solveState(this.state, this.geom, { limit: this.remaining });
-    if (!sol || !sol.moves.length) return null;
-    return sol.moves.map((m) => m.cell).sort((a, b) => a - b)[0];
+    // 深い盤面では探索に時間がかかるので、500ms で打ち切る（実機で固まらないため）
+    const sol = solveState(this.state, this.geom, { limit: this.remaining, budgetMs: 500 });
+    if (sol && sol.moves.length) return sol.moves.map((m) => m.cell).sort((a, b) => a - b)[0];
+    // 時間切れ・見つからないときの保険: ポコ丸の逃げ場がいちばん減るマス（すぐ返る）
+    return this.greedyMove();
+  }
+
+  /** 近似ヒント: 反転後にポコ丸の逃げ場がいちばん少なくなるマス */
+  greedyMove() {
+    const { traps, pos } = this.state;
+    let best = null;
+    let bestCount = Infinity;
+    for (const cell of playableCells(this.geom, pos)) {
+      const t2 = flipAt(traps, cell, this.geom);
+      const count = bits(tanukiOptionsMask(t2, pos, this.geom)).length;
+      if (count < bestCount) {
+        bestCount = count;
+        best = cell;
+      }
+    }
+    return best;
   }
 
   /** 現在の局面に対応する PV の手（なければ null） */

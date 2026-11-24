@@ -135,17 +135,30 @@ export function isLegalMove(state, cell, geom) {
 /**
  * AND/OR 探索（反復深化つき）
  * 指定手数以内に必ず詰むかを判定し、最短手数と最善手を返す。
+ * budgetMs を渡すと、その時間を超えたところで探索を打ち切って null を返す
+ * （ヒントが深い盤面で数秒固まらないための保険。ゲーム進行には使わない）。
  * @returns null | {distance:number, moves:{cell:number,distance:number}[]}
  */
-export function solveState(state, geom, { limit = MAX_MOVES, wantMoves = true, memo = null } = {}) {
+export function solveState(state, geom, { limit = MAX_MOVES, wantMoves = true, memo = null, budgetMs = 0 } = {}) {
   const cells = playableCells(geom);
   // memo は呼び出し側で共有できる（タヌキの応手を比べるときに同じ局面を何度も解かない）
   const table = memo || new Map(); // (traps,pos,depth) -> 手数 or Infinity
+  const now = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
+  const deadline = budgetMs > 0 ? now() + budgetMs : 0;
+  let nodes = 0;
+  const ABORT = { aborted: true };
+
+  function tick() {
+    if (!deadline) return;
+    nodes += 1;
+    if ((nodes & 255) === 0 && now() > deadline) throw ABORT;
+  }
 
   function dist(traps, pos, depth) {
     const opts = tanukiOptionsMask(traps, pos, geom);
     if (opts === 0) return 0;
     if (depth <= 0) return Infinity;
+    tick();
     const key = ((traps >>> 0) * 32 + pos) * 16 + depth;
     const hit = table.get(key);
     if (hit !== undefined) return hit;
@@ -183,35 +196,48 @@ export function solveState(state, geom, { limit = MAX_MOVES, wantMoves = true, m
     return best;
   }
 
-  const distance = dist(state.traps, state.pos, limit);
+  const distance = (() => {
+    try {
+      return dist(state.traps, state.pos, limit);
+    } catch (e) {
+      if (e === ABORT) return null;
+      throw e;
+    }
+  })();
+  if (distance === null) return null; // 時間切れ（budgetMs）
   if (!isFinite(distance)) return null;
   if (!wantMoves) return { distance, moves: [] };
 
   const moves = [];
-  for (const cell of cells) {
-    if (cell === state.pos) continue;
-    const t2 = flipAt(state.traps, cell, geom);
-    const o2 = tanukiOptionsMask(t2, state.pos, geom);
-    if (o2 === 0) {
-      if (distance === 1) moves.push({ cell, distance: 1 });
-      continue;
-    }
-    if (distance === 1) continue;
-    let worst = 0;
-    let ok = true;
-    let m = o2;
-    while (m) {
-      const low = m & -m;
-      const o = 31 - Math.clz32(low);
-      m ^= low;
-      const d = dist(t2, o, distance - 1);
-      if (!isFinite(d)) {
-        ok = false;
-        break;
+  try {
+    for (const cell of cells) {
+      if (cell === state.pos) continue;
+      const t2 = flipAt(state.traps, cell, geom);
+      const o2 = tanukiOptionsMask(t2, state.pos, geom);
+      if (o2 === 0) {
+        if (distance === 1) moves.push({ cell, distance: 1 });
+        continue;
       }
+      if (distance === 1) continue;
+      let worst = 0;
+      let ok = true;
+      let m = o2;
+      while (m) {
+        const low = m & -m;
+        const o = 31 - Math.clz32(low);
+        m ^= low;
+        const d = dist(t2, o, distance - 1);
+        if (!isFinite(d)) {
+          ok = false;
+          break;
+        }
       if (d + 1 > worst) worst = d + 1;
+      }
+      if (ok && worst === distance) moves.push({ cell, distance });
     }
-    if (ok && worst === distance) moves.push({ cell, distance });
+  } catch (e) {
+    if (e === ABORT) return null; // 時間切れ
+    throw e;
   }
   return { distance, moves };
 }

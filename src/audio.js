@@ -34,11 +34,25 @@ let lastVoice = null;
 let lastVoiceError = null;
 let nativeVoice = false;
 const clipCache = new Map(); // `${generation}|${url}` -> AudioBuffer
-/** 話者ごとの再生中の声。who -> {src, audio} */
+/** 再生中の声。Build 4 から「同時に1本だけ」なので、実際に使われるのは最大1件 */
 const voiceNodes = new Map();
 const voiceAudios = new Map();
-let voiceEndTimer = null;
 let duckTimer = null;
+
+/* ---------------- 声の掛け合いキュー ----------------
+   Build 3 までは話者ごとに別チャンネルで鳴らしていたため、
+   「ウサギローのひと声」と「ポコ丸のセリフ」が同時に重なって
+   何を言っているのか分からない状態になった。
+   Build 4 では声を必ず1本ずつ、前の声が終わって 0.15 秒あけてから
+   次の声を鳴らす（掛け合い）。連打で声が溜まらないよう、
+   待機中は常に最新の1本だけを残して古い待機分は間引く。
+*/
+const VOICE_GAP_MS = 150;
+let voiceBusy = false; // いま1本鳴っている（または鳴らし始めた）
+let voiceTimer = null; // 次の声までの待ち
+let pendingVoice = null; // 次に鳴らす声（最新の1本だけ）
+let voiceEpoch = 0; // stopVoice のたびに増える（古い待ちを無効化）
+let currentVoice = null; // 再生中の {who, url, startedAt, ms}
 
 function activeVoiceCount() {
   return voiceNodes.size + voiceAudios.size;
@@ -80,6 +94,10 @@ export function audioDebug() {
     nativeVoice,
     bgmGain: bgmGain ? Math.round(bgmGain.gain.value * 1000) / 1000 : null,
     voices: Array.from(voiceNodes.keys()).concat(Array.from(voiceAudios.keys())),
+    // Build 4: 声は1本ずつ（掛け合いキュー）
+    voiceBusy,
+    voiceQueued: pendingVoice ? 1 : 0,
+    voiceCurrent: currentVoice ? { who: currentVoice.who, url: currentVoice.url } : null,
     clips: clipCache.size,
   };
 }
@@ -197,13 +215,19 @@ export async function recoverAudio() {
   return audioState() === "running";
 }
 
+let lastNativeActivateAt = 0;
+
 export function unlockAudio() {
   if (!ctx) build();
   // タップと同じ瞬間に resume を投げる（iOS はここでしか起きない）
   if (ctx && audioState() !== "running") nudge();
   else if (ctx && audioState() === "running") everRan = true;
   if (ctx && audioState() !== "running") recoverAudio();
-  // iOS は操作のたびに AudioSession を起こし直すと安定する（AppDelegate 側）
+  // iOS は操作のたびに AudioSession を起こし直すと安定するが、毎タップで
+  // ネイティブを呼ぶとメインスレッドが重くなる。1.5秒に1回で十分。
+  const now = Date.now();
+  if (now - lastNativeActivateAt < 1500) return;
+  lastNativeActivateAt = now;
   const cap = window.Capacitor;
   if (cap && cap.Plugins && cap.Plugins.KachiAudio) {
     try {
@@ -334,14 +358,27 @@ export const sfx = {
    2. 声を鳴らすたびに前の声を止めていたため、
       「ウサギローのひと声 → ポコ丸のセリフ」が続く場面で
       後から来た声に食われて、ほぼ何も聞こえない状態だった。
-      → 話者ごとに別の声として鳴らす（同じ話者だけ差し替え）。
+      → Build 3 では話者ごとに別チャンネルにしたが、
+        今度は「2人が同時に喋って何を言っているか分からない」になった。
+        Build 4 では声を1本ずつ、前の声が終わって 0.15 秒あけてから次を鳴らす
+        （排他＋掛け合いキュー。連打は古い待機を間引いて最新の1本だけ待つ）。
 
    3. BGM（0.3）と効果音の下に埋もれていた。
       → 声は 1.0、鳴っている間だけ BGM を 28% まで下げる（ダッキング）。
 */
 
-/** 話者ごとの声を止める。who を省くと全部。 */
+/**
+ * 声を止める。who を省くと全部。
+ * 再生中の声だけでなく「待機中の声」と「次の一声までのタイマー」も捨てる
+ * （ステージを移ったのに前のステージのセリフが後から鳴る、を防ぐ）。
+ */
 export function stopVoice(who) {
+  voiceEpoch += 1;
+  clearTimeout(voiceTimer);
+  voiceTimer = null;
+  voiceBusy = false;
+  pendingVoice = null;
+  currentVoice = null;
   let stopped = false;
   for (const [key, entry] of Array.from(voiceNodes.entries())) {
     if (who && who !== key) continue;
@@ -362,7 +399,10 @@ export function stopVoice(who) {
   }
   if (stopped) voiceStops += 1;
   const native = nativeAudio();
-  if (stopped && native) {
+  // ネイティブ再生は JS の Map にしるしが残らないので、
+  // 「止めた/待っていた」が無くても必ずネイティブ側にも停止を出す
+  // （ステージを移ったのに前のセリフが鳴り続けるのを防ぐ）。
+  if (native) {
     try {
       const r = native.stopVoice(who ? { who } : {});
       if (r && typeof r.catch === "function") r.catch(() => {});
@@ -389,35 +429,34 @@ function duckBgm(ms) {
   }, Math.max(260, ms - 140));
 }
 
-/** ネイティブ（iOS 実機）で鳴らす。鳴らせたら true */
+/** ネイティブ（iOS 実機）で鳴らす。鳴らせたら長さ(ms)、鳴らせなければ 0 */
 async function nativePlayVoice(url, who, volume) {
   const native = nativeAudio();
-  if (!native || typeof native.playVoice !== "function") return false;
+  if (!native || typeof native.playVoice !== "function") return 0;
   try {
     const r = await native.playVoice({ path: url, who, volume });
     if (r && r.ok) {
-      if (voiceNodes.has(who) || voiceAudios.has(who)) voiceStops += 1;
-      voiceNodes.delete(who);
-      voiceAudios.delete(who);
+      voiceNodes.clear();
+      voiceAudios.clear();
       nativeVoice = true;
       voiceStarts += 1;
       lastVoice = url;
       lastVoiceError = null;
-      const ms = Math.round((Number(r.duration) || 1) * 1000);
+      const ms = Math.max(140, Math.round((Number(r.duration) || 1) * 1000));
       duckBgm(ms);
-      return true;
+      return ms;
     }
     lastVoiceError = (r && (r.reason || r.path)) || "native failed";
   } catch (e) {
     lastVoiceError = String(e);
   }
-  return false;
+  return 0;
 }
 
-/** Web Audio で鳴らす（ブラウザ・開発用） */
+/** Web Audio で鳴らす（ブラウザ・開発用）。鳴らせたら長さ(ms)、だめなら 0 */
 async function webPlayVoice(url, who, volume) {
   if (!ctx) build();
-  if (!ctx) return false;
+  if (!ctx) return 0;
   if (audioState() !== "running") {
     // タップの合図のままなら即座に戻る。待たない（操作を止めない）。
     nudge();
@@ -428,24 +467,24 @@ async function webPlayVoice(url, who, volume) {
     }
   }
   const c = ctx;
-  if (!c || audioState() !== "running") return false;
+  if (!c || audioState() !== "running") return 0;
   const id = generation + "|" + url;
   let buffer = clipCache.get(id);
   if (!buffer) {
     const res = await fetch(url, { cache: "force-cache" });
     if (!res.ok) {
       lastVoiceError = `fetch ${res.status}`;
-      return false;
+      return 0;
     }
     const arr = await res.arrayBuffer();
     buffer = await c.decodeAudioData(arr);
     if (!buffer) {
       lastVoiceError = "decode failed";
-      return false;
+      return 0;
     }
     clipCache.set(id, buffer);
   }
-  if (voiceNodes.has(who)) stopVoice(who);
+  // 同時に2本鳴らないよう、キュー側で1本ずつしか呼ばない（ここでは止めない）
   const src = c.createBufferSource();
   src.buffer = buffer;
   const g = c.createGain();
@@ -464,17 +503,17 @@ async function webPlayVoice(url, who, volume) {
     src.start(0);
   } catch {
     voiceNodes.delete(who);
-    return false;
+    return 0;
   }
-  duckBgm(Math.round((buffer.duration || 1) * 1000));
-  return true;
+  const ms = Math.max(140, Math.round((buffer.duration || 1) * 1000));
+  duckBgm(ms);
+  return ms;
 }
 
 /** 最後の手段: HTMLAudioElement（Web Audio が使えないとき） */
 function htmlPlayVoice(url, who, volume) {
-  if (typeof Audio === "undefined") return false;
+  if (typeof Audio === "undefined") return 0;
   try {
-    stopVoice(who);
     const el = new Audio(url);
     el.volume = Math.max(0, Math.min(1, volume));
     el.setAttribute("playsinline", "");
@@ -483,11 +522,13 @@ function htmlPlayVoice(url, who, volume) {
     voiceStarts += 1;
     lastVoice = url;
     const p = el.play();
-    if (p && typeof p.then === "function") p.then(() => duckBgm(Math.round((el.duration || 1) * 1000))).catch(() => {});
-    return true;
+    if (p && typeof p.then === "function") p.catch(() => {});
+    const ms = Number.isFinite(el.duration) && el.duration > 0 ? Math.round(el.duration * 1000) : 1000;
+    duckBgm(ms);
+    return Math.max(140, ms);
   } catch (e) {
     lastVoiceError = String(e);
-    return false;
+    return 0;
   }
 }
 
@@ -500,11 +541,73 @@ function ellisten(el, who) {
   el.addEventListener("error", done, { once: true });
 }
 
+/** 1本だけ鳴らす（キューから呼ばれる）。鳴らせたら長さ(ms)、だめなら 0 */
+async function playOneVoice(url, who, volume) {
+  try {
+    const nativeMs = await nativePlayVoice(url, who, volume);
+    if (nativeMs) return nativeMs;
+    const webMs = await webPlayVoice(url, who, volume);
+    if (webMs) return webMs;
+    return htmlPlayVoice(url, who, volume);
+  } catch (e) {
+    lastVoiceError = String(e);
+    return 0;
+  }
+}
+
+/** 待機中の声を最新の1本に置き換えて、空いていれば鳴らし始める */
+function enqueueVoice(url, who, volume) {
+  pendingVoice = { url, who, volume }; // 連打時は古い待機分を間引く
+  pumpVoice();
+}
+
+function pumpVoice() {
+  if (voiceBusy || !pendingVoice) return;
+  const item = pendingVoice;
+  pendingVoice = null;
+  voiceBusy = true;
+  const epoch = voiceEpoch;
+  const startedAt = Date.now();
+  currentVoice = { who: item.who, url: item.url, startedAt, ms: 0 };
+  Promise.resolve(playOneVoice(item.url, item.who, item.volume))
+    .then((ms) => scheduleNextVoice(epoch, startedAt, ms))
+    .catch(() => {
+      if (epoch === voiceEpoch) {
+        voiceBusy = false;
+        currentVoice = null;
+        pumpVoice();
+      }
+    });
+}
+
+/** 前の声が終わって 0.15 秒あけてから次へ（重なりゼロ） */
+function scheduleNextVoice(epoch, startedAt, ms) {
+  if (epoch !== voiceEpoch) return;
+  const length = Math.max(140, Number(ms) || 900);
+  if (currentVoice) currentVoice.ms = length;
+  const tick = () => {
+    voiceTimer = null;
+    if (epoch !== voiceEpoch) return;
+    // 鳴り終わりが報告より長引いた場合は、実際に終わるまで待つ（重ねない）
+    const still = activeVoiceCount() > 0 && Date.now() - startedAt < length + 2500;
+    if (still) {
+      voiceTimer = setTimeout(tick, 60);
+      return;
+    }
+    voiceBusy = false;
+    currentVoice = null;
+    pumpVoice();
+  };
+  clearTimeout(voiceTimer);
+  voiceTimer = setTimeout(tick, length + VOICE_GAP_MS);
+}
+
 /**
- * 声を1本鳴らす。
- * - who ごとに別の声（同じ話者だけ差し替え）
+ * 声を1本鳴らす（掛け合いキュー）。
+ * - 同時に2人の声は鳴らない（前の声が終わってから次）
+ * - 連打時は待機中の古い声を捨て、最新の1つだけ待つ
  * - 非同期・ノンブロッキング。例外は投げない
- * @returns {Promise<boolean>} 鳴らせたか
+ * @returns {Promise<boolean>} 受け付けたか（鳴り終わりは待たない）
  */
 export async function playClip(url, opts = {}) {
   if (!url) return false;
@@ -514,18 +617,13 @@ export async function playClip(url, opts = {}) {
   const delay = opts.delay || 0;
   if (delay > 0) {
     setTimeout(() => {
-      playClip(url, { ...opts, delay: 0 }).catch(() => {});
+      if (store.settings.voice === false) return;
+      enqueueVoice(url, who, volume);
     }, delay);
     return true;
   }
-  try {
-    if (await nativePlayVoice(url, who, volume)) return true;
-    if (await webPlayVoice(url, who, volume)) return true;
-    return htmlPlayVoice(url, who, volume);
-  } catch (e) {
-    lastVoiceError = String(e);
-    return false;
-  }
+  enqueueVoice(url, who, volume);
+  return true;
 }
 
 /** 声のファイルを先に読み込む（最初のタップから間を空けない） */
